@@ -4,7 +4,7 @@
 
 - 两个项目的全部自有源码、头文件、CMake、测试和文档。
 - `third_party/yolov5` 固定版本源码及其 Git 元数据。
-- `datasets/coco_objects` 的训练/验证图片、标签、缓存和 manifest。
+- `datasets/coco_objects` 的选择清单和 manifest；训练/验证图片与标签不上传。
 - `runs` 中两轮训练的权重、指标、图表和日志。
 - `artifacts` 中初始化权重、ONNX、RKNN、元数据、量化列表/图片、中文标签和测试截图。
 - ARM 交叉编译输出和 host 测试输出。
@@ -18,6 +18,8 @@
 rv1126_object_training/.venv-train/
 rv1126_object_training/.venv-rknn/
 rv1126_object_training/.cache/
+rv1126_object_training/datasets/coco_objects/images/
+rv1126_object_training/datasets/coco_objects/labels/
 rv1126_object_training/downloads/packages/
 rv1126_object_training/downloads/python-dev/
 rv1126_object_training/downloads/*.tar.gz

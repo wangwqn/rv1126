@@ -3,6 +3,29 @@
 独立于原 `15_rkmedia_rockx_face_detection_rtsp` 项目，不覆盖原人脸程序。
 目标芯片是 **RV1126（不是 RV1126B）**，使用第一代 RKNN Toolkit。
 
+## 克隆后快速使用
+
+仓库包含原始人脸工程、物体检测工程、固定版本 YOLOv5 源码、COCO 数据选择清单、
+训练结果、ONNX/RKNN 产物，以及针对当前 ALIENTEK RV1126 BSP 编译的发布包。
+不包含不可移植的 Python 虚拟环境、下载缓存、完整 Rockchip SDK 和 CMake 中间文件。
+437 张训练图和 105 张验证图不上传，可用已记录的选择参数重新下载生成。
+
+```bash
+git clone git@github.com:wangwqn/rv1126.git
+cd rv1126
+bash scripts/verify_checkout.sh
+```
+
+相同开发板/rootfs 可直接上传已经编译好的物体检测发布包：
+
+```bash
+bash scripts/deploy_release.sh
+adb shell 'cd /root/rv1126_objects && ./rkmedia_object_detection_rtsp --rotation 270 --threshold 0.35'
+```
+
+预编译程序依赖当前板载 RKMedia、RGA、RKNN、RKAiq 和 C/C++ 运行库 ABI；不同 BSP
+必须按本文后面的交叉编译步骤重新生成。发布包详情见 `release/rv1126/README.md`。
+
 ## 检测类别与名称显示
 
 11 类：手机、杯子、瓶子、书籍、鼠标、键盘、笔记本电脑、显示器/电视、香蕉、苹果、橙子。
@@ -38,7 +61,7 @@ RV1126 旧 RGA API 只有 8 个区域，因此实时显示最多 2 个带名称�
 config/classes.json        类别顺序、中文名、原 COCO 类别索引
 scripts/                   下载标注、训练、导出、量化、推送与预览
 third_party/yolov5/         官方 YOLOv5 v6.0，固定 commit
-datasets/coco_objects/     图片、YOLO 标注、data.yaml、数据清单
+datasets/coco_objects/     本机数据集；仓库只保存选择清单，图片和标签需重新生成
 runs/                      训练权重、损失和验证指标
 artifacts/                 ONNX、RKNN、模型元数据、中文标签、测试输出
 deploy/objects.cpp         RKNN RAII、预处理、后处理、中文绘制
