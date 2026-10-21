@@ -21,6 +21,18 @@ AI：3 FPS，阈值 0.35
 验证的稳定上限”，不是对所有网络环境的保证。8 Mbps 仍为已知失败点，中间的
 7 Mbps 尚未测试；弱 Wi-Fi 环境可显式降为 5 Mbps 或 4 Mbps。
 
+## RTP/UDP 传输策略
+
+RTSP 控制连接仍使用 TCP 8554；H.264 媒体默认由客户端在 `SETUP` 中请求
+`RTP/AVP/UDP`，以避免 TCP interleaved 的队头阻塞。板载 2020 版静态库已确认包含
+UDP RTP/RTCP socket 和 `client_port/server_port` 协商实现，不需要更换服务端程序。
+
+板端本机 FFmpeg 双路 UDP 30 秒测试均正常退出，服务端日志确认主、子流分别建立
+UDP RTP/RTCP 端口。无额外接收缓冲时主流曾报告一次丢9个 RTP包；单主流使用
+2 MiB socket buffer、512包重排队列和200 ms最大重排等待复测30秒无丢包。
+这说明 UDP消除了发送阻塞，但网络拥塞时可能丢包；因此保留 TCP作为回退方式，
+并保持主流6 Mbps，不因改用 UDP恢复到已知不稳定的8 Mbps。
+
 ## 启动
 
 ```bash
@@ -44,25 +56,28 @@ OSD boxes/truncated、RTSP queue_high_water/shutdown_abandoned
 摄像头图启动后关闭 TNR，本次 6 Mbps 测试稳态 `pts_gap=0`。仍需用 30 分钟和
 24 小时测试确认长期行为，不能用短测结果承诺绝对零丢帧。
 
-## Ubuntu 经 USB ADB 验证
+## Ubuntu 经局域网 UDP 验证
 
 ```bash
-adb forward tcp:8554 tcp:8554
-
-ffprobe -v error -rtsp_transport tcp \
+ffprobe -v error -rtsp_transport udp \
   -select_streams v:0 \
   -show_entries stream=codec_name,profile,width,height,pix_fmt,r_frame_rate \
   -of default=noprint_wrappers=1 \
-  rtsp://127.0.0.1:8554/live/main_stream
+  rtsp://开发板当前IP:8554/live/main_stream
 
-ffmpeg -hide_banner -loglevel warning -stats -rtsp_transport tcp \
-  -i rtsp://127.0.0.1:8554/live/main_stream -map 0:v:0 -c copy \
-  -t 1800 -f null -
+bash scripts/test_rtsp_udp.sh 开发板当前IP 1800
 ```
 
-子流把 URL 改为 `/live/sub_stream`。正式验收应让两条命令并发运行至少 30 分钟，
-并确认无 `CSeq`、`corrupt decoded frame`、超时和进程退出。24 小时测试用于发现
-DMA-BUF、句柄或普通内存泄漏。
+正式验收必须从另一台机器经实际 Wi-Fi/以太网直连开发板，脚本同时解码主、子流，
+并确认无 `RTP: missed`、`corrupt decoded frame`、超时和进程退出。ADB forward 只能
+转发 TCP，不能验证 RTP/UDP。24小时测试用于发现丢包、DMA-BUF、句柄或内存泄漏。
+
+UDP 被网络策略阻断时可用 TCP 隔离诊断：
+
+```bash
+adb forward tcp:8554 tcp:8554
+ffplay -rtsp_transport tcp rtsp://127.0.0.1:8554/live/main_stream
+```
 
 ## CPU 与内存
 
@@ -88,8 +103,10 @@ AI 独占低分辨率 RGA BGR 分支；中文标签只生成小型 ARGB 位图�
 
 ```bash
 ffplay -fflags nobuffer -flags low_delay -framedrop \
-  -rtsp_transport tcp -probesize 32 -analyzeduration 0 \
-  rtsp://127.0.0.1:8554/live/main_stream
+  -rtsp_transport udp -buffer_size 1048576 \
+  -reorder_queue_size 128 -max_delay 100000 \
+  -probesize 32 -analyzeduration 0 \
+  rtsp://开发板当前IP:8554/live/main_stream
 ```
 
 让摄像头拍摄毫秒计时器，同时在播放器中截图，对比“实物计时器”和“画面计时器”；

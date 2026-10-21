@@ -9,6 +9,7 @@ required=(
   "STATUS.md"
   "TESTING.md"
   "handoff/VERSION_CONTROL.md"
+  "scripts/test_rtsp_udp.sh"
   "15_rkmedia_rockx_face_detection_rtsp/CMakeLists.txt"
   "deploy/pipeline/CMakeLists.txt"
   "deploy/pipeline/include/vision/config.hpp"

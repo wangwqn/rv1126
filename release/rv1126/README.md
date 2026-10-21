@@ -43,5 +43,16 @@ cd /root/rv1126_objects
 解码测试，8 Mbps 在板载旧版 `librtsp` 上不稳定。弱 Wi-Fi 可在启动时指定
 `--bitrate 5000000` 或 `--bitrate 4000000`。
 
+局域网播放默认选择 RTP/UDP，RTSP 控制连接仍使用 TCP 8554。FFplay 示例：
+
+```bash
+ffplay -rtsp_transport udp -buffer_size 2097152 \
+  -reorder_queue_size 512 -max_delay 200000 \
+  rtsp://开发板IP:8554/live/main_stream
+```
+
+ADB forward 不支持 UDP 媒体端口。UDP 被防火墙或网络策略阻断时，再回退到
+`-rtsp_transport tcp`。
+
 如二进制提示缺少共享库、非法指令或摄像头节点不存在，请不要替换板载系统库，应使用
 `deploy/pipeline/cmake/toolchains/rv1126.cmake` 和目标板对应 SDK 重新交叉编译。

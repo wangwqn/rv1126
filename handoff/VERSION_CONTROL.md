@@ -34,13 +34,13 @@ git commit -m "说明本次完整更新"
 
 # 4. 确认提交后工作树干净，再建立带注释的版本标签。
 git status --short
-git tag -a v1.0.0 -m "RV1126 object detection v1.0.0"
+git tag -a v1.1.0 -m "RV1126 object detection v1.1.0"
 
 # 5. 同步两个远程仓库的分支和标签。
 git push origin main
-git push origin v1.0.0
+git push origin v1.1.0
 git push gitee main
-git push gitee v1.0.0
+git push gitee v1.1.0
 ```
 
 后续版本按变更范围递增，例如：
@@ -54,17 +54,17 @@ git push gitee v1.0.0
 ```bash
 git clone git@github.com:wangwqn/rv1126.git
 cd rv1126
-git checkout v1.0.0
+git checkout v1.1.0
 bash scripts/verify_checkout.sh
 
 git tag --list
 git log --oneline --graph --decorate --all
-git diff --stat v1.0.0..main
-git diff v1.0.0..main
+git diff --stat v1.1.0..main
+git diff v1.1.0..main
 ```
 
 若需要两个版本同时存在，不在当前目录来回切换，使用独立工作树：
 
 ```bash
-git worktree add ../rv1126-v1.0.0 v1.0.0
+git worktree add ../rv1126-v1.1.0 v1.1.0
 ```

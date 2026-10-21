@@ -13,7 +13,7 @@
 ```bash
 git clone git@github.com:wangwqn/rv1126.git
 cd rv1126
-git checkout v1.0.0
+git checkout v1.1.0
 bash scripts/verify_checkout.sh
 ```
 
@@ -156,15 +156,21 @@ cd /root/rv1126_objects
 6 Mbps。这里的“稳定上限”只适用于当前开发板、BSP 和热点网络组合；链路较差时可用
 `--bitrate 5000000` 或 `--bitrate 4000000` 主动降码率。
 
-Ubuntu 经 ADB 测试：
+局域网默认使用 RTP/UDP，减轻旧版 `librtsp` 的 TCP interleaved 队头阻塞。RTSP
+控制连接仍使用 TCP 8554，H.264 RTP/RTCP 数据使用客户端协商的 UDP 端口：
 
 ```bash
-adb forward tcp:8554 tcp:8554
-ffplay -rtsp_transport tcp rtsp://127.0.0.1:8554/live/main_stream
+ffplay -rtsp_transport udp -buffer_size 2097152 \
+  -reorder_queue_size 512 -max_delay 200000 \
+  rtsp://开发板当前IP:8554/live/main_stream
 ```
 
+可用 `bash scripts/test_rtsp_udp.sh 开发板当前IP 60` 同时验收主、子流。ADB forward
+只能转发 TCP，不能用于 RTP/UDP；只有 UDP 被防火墙、NAT 或网络策略阻断时，才回退到
+`-rtsp_transport tcp`。
+
 Windows VLC 经 Wi-Fi：先从 `adb shell ip -4 addr show wlan0` 确认开发板当前地址，
-再打开 `rtsp://开发板当前IP:8554/live/main_stream`。
+取消“RTP over RTSP (TCP)”后，再打开 `rtsp://开发板当前IP:8554/live/main_stream`。
 无 wlan0 地址时先恢复网络，不要沿用旧的 DHCP 地址。`127.0.0.1` 只属于做了 ADB 转发的电脑。
 
 ## 缓冲区与并发约束
