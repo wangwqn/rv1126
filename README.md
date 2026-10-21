@@ -13,8 +13,13 @@
 ```bash
 git clone git@github.com:wangwqn/rv1126.git
 cd rv1126
+git checkout v1.0.0
 bash scripts/verify_checkout.sh
 ```
+
+当前完整工程版本由根目录 `VERSION` 标识。每个公开版本使用 `v主版本.次版本.修订号`
+标签固定；Git 推送虽然只传输变化的数据，但标签对应的是当时完整工程快照。更新历史见
+`CHANGELOG.md`，具体发布和版本对比流程见 `handoff/VERSION_CONTROL.md`。
 
 相同开发板/rootfs 可直接上传已经编译好的物体检测发布包：
 
