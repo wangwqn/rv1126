@@ -83,11 +83,6 @@ Isp::Isp(const Config& c) : camera_(c.camera) {
                  "ISP Prepare");
         check_rk(rk_aiq_uapi_sysctl_start(context), "ISP Start");
         started_ = true;
-        // TNR (3D temporal noise reduction) makes the 4K IMX415 ISP/ISPP
-        // path miss the 33.33 ms budget observed at 30 FPS. Keep spatial NR
-        // enabled, but disable TNR to reduce pipeline latency and frame loss.
-        check_rk(rk_aiq_uapi_sysctl_setModuleCtl(context, RK_MODULE_TNR, false),
-                 "ISP Disable TNR");
         frameRateInfo_t rate{};
         rate.mode = OP_MANUAL;
         rate.fps = c.fps;
@@ -101,6 +96,22 @@ Isp::Isp(const Config& c) : camera_(c.camera) {
     }
 #else
     throw std::runtime_error("ISP support disabled at build time; use --no-isp with an externally managed ISP");
+#endif
+}
+void Isp::disable_tnr() {
+#ifdef RKAIQ
+    auto* context = static_cast<rk_aiq_sys_ctx_t*>(context_);
+    if (!context) return;
+    // This old RKAiq generation applies forced ISPP module state while it is
+    // processing live parameters. Calling this only after VI has started makes
+    // the request reach the hardware instead of being overwritten at startup.
+    check_rk(rk_aiq_uapi_sysctl_setModuleCtl(context, RK_MODULE_TNR, false),
+             "ISP Disable TNR");
+    bool enabled = true;
+    check_rk(rk_aiq_uapi_sysctl_getModuleCtl(context, RK_MODULE_TNR, &enabled),
+             "ISP Get TNR state");
+    if (enabled) throw std::runtime_error("ISP TNR remained enabled");
+    std::fprintf(stderr, "ISP TNR forced off\n");
 #endif
 }
 Isp::~Isp() {
