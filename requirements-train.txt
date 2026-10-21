@@ -1,0 +1,16 @@
+# Python 3.8; install CPU torch/torchvision separately from the PyTorch index.
+numpy==1.23.5
+opencv-python-headless==4.8.1.78
+Pillow==9.5.0
+PyYAML==6.0.1
+scipy==1.10.1
+matplotlib==3.7.5
+pandas==1.5.3
+seaborn==0.12.2
+requests==2.31.0
+tqdm==4.66.5
+tensorboard==2.12.3
+thop==0.1.1.post2209072238
+onnx==1.12.0
+onnxruntime==1.14.1
+protobuf==3.20.1

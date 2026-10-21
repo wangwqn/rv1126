@@ -1,0 +1,194 @@
+
+alientek@ubuntu:~/桌面/15_rkmedia_rockx_face_detection_rtsp$ cd "$HOME/桌面/15_rkmedia_rockx_face_detection_rtsp"
+alientek@ubuntu:~/桌面/15_rkmedia_rockx_face_detection_rtsp$ 
+alientek@ubuntu:~/桌面/15_rkmedia_rockx_face_detection_rtsp$ grep -n "RK_SDK_ROOT" cmake/toolchains/rv1126.cmake
+9:set(RK_SDK_ROOT "${_RK_DEFAULT_SDK_ROOT}" CACHE PATH
+12:    "${RK_SDK_ROOT}/prebuilts/gcc/linux-x86/arm/gcc-arm-8.3-2019.03-x86_64-arm-linux-gnueabihf"
+15:    "${RK_SDK_ROOT}/buildroot/output/alientek_rv1126/host/arm-buildroot-linux-gnueabihf/sysroot"
+alientek@ubuntu:~/桌面/15_rkmedia_rockx_face_detection_rtsp$ export RVSDK="$HOME/rv1126_sdk"
+alientek@ubuntu:~/桌面/15_rkmedia_rockx_face_detection_rtsp$ export RK_GCC="$RVSDK/prebuilts/gcc/linux-x86/arm/gcc-arm-8.3-2019.03-x86_64-arm-linux-gnueabihf"
+alientek@ubuntu:~/桌面/15_rkmedia_rockx_face_detection_rtsp$ export RK_SYSROOT="$RVSDK/buildroot/output/alientek_rv1126/host/arm-buildroot-linux-gnueabihf/sysroot"
+alientek@ubuntu:~/桌面/15_rkmedia_rockx_face_detection_rtsp$ 
+alientek@ubuntu:~/桌面/15_rkmedia_rockx_face_detection_rtsp$ test -x "$RK_GCC/bin/arm-linux-gnueabihf-g++" && echo "编译器：OK"
+编译器：OK
+alientek@ubuntu:~/桌面/15_rkmedia_rockx_face_detection_rtsp$ test -f "$RK_SYSROOT/usr/include/rkmedia_api.h" && echo "RKMedia：OK"
+RKMedia：OK
+alientek@ubuntu:~/桌面/15_rkmedia_rockx_face_detection_rtsp$ test -f "$RK_SYSROOT/usr/lib/librockx.so" && echo "RockX：OK"
+RockX：OK
+alientek@ubuntu:~/桌面/15_rkmedia_rockx_face_detection_rtsp$ cmake -S . -B build-rv1126-sdk -G Ninja \
+>   -DCMAKE_TOOLCHAIN_FILE="$PWD/cmake/toolchains/rv1126.cmake" \
+>   -DRK_SDK_ROOT="$RVSDK" \
+>   -DRK_TOOLCHAIN_ROOT="$RK_GCC" \
+>   -DRK_SDK_SYSROOT="$RK_SYSROOT" \
+>   -DRK_VISION_BUILD_DEVICE=ON \
+>   -DRK_VISION_ENABLE_ISP=ON \
+>   -DBUILD_TESTING=OFF
+-- The C compiler identification is GNU 8.3.0
+-- The CXX compiler identification is GNU 8.3.0
+-- Check for working C compiler: /home/alientek/rv1126_sdk/prebuilts/gcc/linux-x86/arm/gcc-arm-8.3-2019.03-x86_64-arm-linux-gnueabihf/bin/arm-linux-gnueabihf-gcc
+-- Check for working C compiler: /home/alientek/rv1126_sdk/prebuilts/gcc/linux-x86/arm/gcc-arm-8.3-2019.03-x86_64-arm-linux-gnueabihf/bin/arm-linux-gnueabihf-gcc -- works
+-- Detecting C compiler ABI info
+-- Detecting C compiler ABI info - done
+-- Detecting C compile features
+-- Detecting C compile features - done
+-- Check for working CXX compiler: /home/alientek/rv1126_sdk/prebuilts/gcc/linux-x86/arm/gcc-arm-8.3-2019.03-x86_64-arm-linux-gnueabihf/bin/arm-linux-gnueabihf-g++
+-- Check for working CXX compiler: /home/alientek/rv1126_sdk/prebuilts/gcc/linux-x86/arm/gcc-arm-8.3-2019.03-x86_64-arm-linux-gnueabihf/bin/arm-linux-gnueabihf-g++ -- works
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+-- Looking for pthread.h
+-- Looking for pthread.h - found
+-- Performing Test CMAKE_HAVE_LIBC_PTHREAD
+-- Performing Test CMAKE_HAVE_LIBC_PTHREAD - Failed
+-- Check if compiler accepts -pthread
+-- Check if compiler accepts -pthread - yes
+-- Found Threads: TRUE  
+-- RK device target enabled (sysroot: /home/alientek/rv1126_sdk/buildroot/output/alientek_rv1126/host/arm-buildroot-linux-gnueabihf/sysroot, ISP: ON)
+-- Configuring done
+-- Generating done
+-- Build files have been written to: /home/alientek/桌面/15_rkmedia_rockx_face_detection_rtsp/build-rv1126-sdk
+alientek@ubuntu:~/桌面/15_rkmedia_rockx_face_detection_rtsp$ cmake --build build-rv1126-sdk --parallel "$(nproc)"
+[2/4] Building CXX object CMakeFiles/rkmedia_rockx_face_detection_rtsp.dir/src/rk_backend.cpp.o
+FAILED: CMakeFiles/rkmedia_rockx_face_detection_rtsp.dir/src/rk_backend.cpp.o 
+/home/alientek/rv1126_sdk/prebuilts/gcc/linux-x86/arm/gcc-arm-8.3-2019.03-x86_64-arm-linux-gnueabihf/bin/arm-linux-gnueabihf-g++ --sysroot=/home/alientek/rv1126_sdk/buildroot/output/alientek_rv1126/host/arm-buildroot-linux-gnueabihf/sysroot  -DRKAIQ=1 -I../include -I../ -I../librtsp -I/home/alientek/rv1126_sdk/buildroot/output/alientek_rv1126/host/arm-buildroot-linux-gnueabihf/sysroot/usr/include/rga -I/home/alientek/rv1126_sdk/buildroot/output/alientek_rv1126/host/arm-buildroot-linux-gnueabihf/sysroot/usr/include/rockx -I/home/alientek/rv1126_sdk/buildroot/output/alientek_rv1126/host/arm-buildroot-linux-gnueabihf/sysroot/usr/include/rkaiq/uAPI -I/home/alientek/rv1126_sdk/buildroot/output/alientek_rv1126/host/arm-buildroot-linux-gnueabihf/sysroot/usr/include/rkaiq -I/home/alientek/rv1126_sdk/buildroot/output/alientek_rv1126/host/arm-buildroot-linux-gnueabihf/sysroot/usr/include/rkaiq/xcore -I/home/alientek/rv1126_sdk/buildroot/output/alientek_rv1126/host/arm-buildroot-linux-gnueabihf/sysroot/usr/include/rkaiq/algos -I/home/alientek/rv1126_sdk/buildroot/output/alientek_rv1126/host/arm-buildroot-linux-gnueabihf/sysroot/usr/include/rkaiq/common -I/home/alientek/rv1126_sdk/buildroot/output/alientek_rv1126/host/arm-buildroot-linux-gnueabihf/sysroot/usr/include/rkaiq/iq_parser -pthread -std=c++14 -MD -MT CMakeFiles/rkmedia_rockx_face_detection_rtsp.dir/src/rk_backend.cpp.o -MF CMakeFiles/rkmedia_rockx_face_detection_rtsp.dir/src/rk_backend.cpp.o.d -o CMakeFiles/rkmedia_rockx_face_detection_rtsp.dir/src/rk_backend.cpp.o -c ../src/rk_backend.cpp
+../src/rk_backend.cpp: 在函数‘rga_buffer_t vision::{anonymous}::wrap_image(const Frame&, IMAGE_TYPE_E)’中:
+../src/rk_backend.cpp:28:50: 错误： ‘RK_FORMAT_YCbCr_420_SP’在此作用域中尚未声明
+     const int format = type == IMAGE_TYPE_NV12 ? RK_FORMAT_YCbCr_420_SP :
+                                                  ^~~~~~~~~~~~~~~~~~~~~~
+../src/rk_backend.cpp:29:52: 错误： ‘RK_FORMAT_RGB_888’在此作用域中尚未声明
+                        type == IMAGE_TYPE_RGB888 ? RK_FORMAT_RGB_888 : RK_FORMAT_BGR_888;
+                                                    ^~~~~~~~~~~~~~~~~
+../src/rk_backend.cpp:29:52: 附注： suggested alternative: ‘PIXEL_FORMAT_ARGB_8888’
+                        type == IMAGE_TYPE_RGB888 ? RK_FORMAT_RGB_888 : RK_FORMAT_BGR_888;
+                                                    ^~~~~~~~~~~~~~~~~
+                                                    PIXEL_FORMAT_ARGB_8888
+../src/rk_backend.cpp:29:72: 错误： ‘RK_FORMAT_BGR_888’在此作用域中尚未声明
+                        type == IMAGE_TYPE_RGB888 ? RK_FORMAT_RGB_888 : RK_FORMAT_BGR_888;
+                                                                        ^~~~~~~~~~~~~~~~~
+../src/rk_backend.cpp:29:72: 附注： suggested alternative: ‘PIXEL_FORMAT_ARGB_8888’
+                        type == IMAGE_TYPE_RGB888 ? RK_FORMAT_RGB_888 : RK_FORMAT_BGR_888;
+                                                                        ^~~~~~~~~~~~~~~~~
+                                                                        PIXEL_FORMAT_ARGB_8888
+../src/rk_backend.cpp: 在构造函数‘vision::HardwareCompositor::HardwareCompositor(bool)’中:
+../src/rk_backend.cpp:226:65: 错误： ‘RK_FORMAT_RGBA_8888’在此作用域中尚未声明
+     auto rgba = wrapbuffer_fd_t(badge_->fd(), 128, 32, 128, 32, RK_FORMAT_RGBA_8888);
+                                                                 ^~~~~~~~~~~~~~~~~~~
+../src/rk_backend.cpp:226:65: 附注： suggested alternative: ‘PIXEL_FORMAT_ARGB_8888’
+     auto rgba = wrapbuffer_fd_t(badge_->fd(), 128, 32, 128, 32, RK_FORMAT_RGBA_8888);
+                                                                 ^~~~~~~~~~~~~~~~~~~
+                                                                 PIXEL_FORMAT_ARGB_8888
+../src/rk_backend.cpp: 在成员函数‘void vision::HardwareCompositor::compose(const Frame&, const std::vector<vision::Box>&)’中:
+../src/rk_backend.cpp:232:65: 错误： ‘RK_FORMAT_RGBA_8888’在此作用域中尚未声明
+     auto rgba = wrapbuffer_fd_t(badge_->fd(), 128, 32, 128, 32, RK_FORMAT_RGBA_8888);
+                                                                 ^~~~~~~~~~~~~~~~~~~
+../src/rk_backend.cpp:232:65: 附注： suggested alternative: ‘PIXEL_FORMAT_ARGB_8888’
+     auto rgba = wrapbuffer_fd_t(badge_->fd(), 128, 32, 128, 32, RK_FORMAT_RGBA_8888);
+                                                                 ^~~~~~~~~~~~~~~~~~~
+                                                                 PIXEL_FORMAT_ARGB_8888
+../src/rk_backend.cpp: 在成员函数‘vision::Detection vision::FaceDetector::infer(const Frame&)’中:
+../src/rk_backend.cpp:309:62: 错误： 对‘min(uint32_t&, int&)’的调用没有匹配的函数
+         face.box.right = std::min(image.width, face.box.right); face.box.bottom = std::min(image.height, face.box.bottom);
+                                                              ^
+In file included from /home/alientek/rv1126_sdk/prebuilts/gcc/linux-x86/arm/gcc-arm-8.3-2019.03-x86_64-arm-linux-gnueabihf/arm-linux-gnueabihf/include/c++/8.3.0/bits/char_traits.h:39,
+                 from /home/alientek/rv1126_sdk/prebuilts/gcc/linux-x86/arm/gcc-arm-8.3-2019.03-x86_64-arm-linux-gnueabihf/arm-linux-gnueabihf/include/c++/8.3.0/string:40,
+                 from /home/alientek/rv1126_sdk/prebuilts/gcc/linux-x86/arm/gcc-arm-8.3-2019.03-x86_64-arm-linux-gnueabihf/arm-linux-gnueabihf/include/c++/8.3.0/stdexcept:39,
+                 from ../include/vision/config.hpp:5,
+                 from ../include/vision/rk_backend.hpp:3,
+                 from ../src/rk_backend.cpp:1:
+/home/alientek/rv1126_sdk/prebuilts/gcc/linux-x86/arm/gcc-arm-8.3-2019.03-x86_64-arm-linux-gnueabihf/arm-linux-gnueabihf/include/c++/8.3.0/bits/stl_algobase.h:195:5: 附注： candidate: ‘template<class _Tp> constexpr const _Tp& std::min(const _Tp&, const _Tp&)’
+     min(const _Tp& __a, const _Tp& __b)
+     ^~~
+/home/alientek/rv1126_sdk/prebuilts/gcc/linux-x86/arm/gcc-arm-8.3-2019.03-x86_64-arm-linux-gnueabihf/arm-linux-gnueabihf/include/c++/8.3.0/bits/stl_algobase.h:195:5: 附注：   template argument deduction/substitution failed:
+../src/rk_backend.cpp:309:62: 附注：   deduced conflicting types for parameter ‘const _Tp’ (‘unsigned int’ and ‘int’)
+         face.box.right = std::min(image.width, face.box.right); face.box.bottom = std::min(image.height, face.box.bottom);
+                                                              ^
+In file included from /home/alientek/rv1126_sdk/prebuilts/gcc/linux-x86/arm/gcc-arm-8.3-2019.03-x86_64-arm-linux-gnueabihf/arm-linux-gnueabihf/include/c++/8.3.0/bits/char_traits.h:39,
+                 from /home/alientek/rv1126_sdk/prebuilts/gcc/linux-x86/arm/gcc-arm-8.3-2019.03-x86_64-arm-linux-gnueabihf/arm-linux-gnueabihf/include/c++/8.3.0/string:40,
+                 from /home/alientek/rv1126_sdk/prebuilts/gcc/linux-x86/arm/gcc-arm-8.3-2019.03-x86_64-arm-linux-gnueabihf/arm-linux-gnueabihf/include/c++/8.3.0/stdexcept:39,
+                 from ../include/vision/config.hpp:5,
+                 from ../include/vision/rk_backend.hpp:3,
+                 from ../src/rk_backend.cpp:1:
+/home/alientek/rv1126_sdk/prebuilts/gcc/linux-x86/arm/gcc-arm-8.3-2019.03-x86_64-arm-linux-gnueabihf/arm-linux-gnueabihf/include/c++/8.3.0/bits/stl_algobase.h:243:5: 附注： candidate: ‘template<class _Tp, class _Compare> constexpr const _Tp& std::min(const _Tp&, const _Tp&, _Compare)’
+     min(const _Tp& __a, const _Tp& __b, _Compare __comp)
+     ^~~
+/home/alientek/rv1126_sdk/prebuilts/gcc/linux-x86/arm/gcc-arm-8.3-2019.03-x86_64-arm-linux-gnueabihf/arm-linux-gnueabihf/include/c++/8.3.0/bits/stl_algobase.h:243:5: 附注：   template argument deduction/substitution failed:
+../src/rk_backend.cpp:309:62: 附注：   deduced conflicting types for parameter ‘const _Tp’ (‘unsigned int’ and ‘int’)
+         face.box.right = std::min(image.width, face.box.right); face.box.bottom = std::min(image.height, face.box.bottom);
+                                                              ^
+In file included from /home/alientek/rv1126_sdk/prebuilts/gcc/linux-x86/arm/gcc-arm-8.3-2019.03-x86_64-arm-linux-gnueabihf/arm-linux-gnueabihf/include/c++/8.3.0/algorithm:62,
+                 from ../include/vision/core.hpp:3,
+                 from ../include/vision/rk_backend.hpp:4,
+                 from ../src/rk_backend.cpp:1:
+/home/alientek/rv1126_sdk/prebuilts/gcc/linux-x86/arm/gcc-arm-8.3-2019.03-x86_64-arm-linux-gnueabihf/arm-linux-gnueabihf/include/c++/8.3.0/bits/stl_algo.h:3450:5:附注： candidate: ‘template<class _Tp> constexpr _Tp std::min(std::initializer_list<_Tp>)’
+     min(initializer_list<_Tp> __l)
+     ^~~
+/home/alientek/rv1126_sdk/prebuilts/gcc/linux-x86/arm/gcc-arm-8.3-2019.03-x86_64-arm-linux-gnueabihf/arm-linux-gnueabihf/include/c++/8.3.0/bits/stl_algo.h:3450:5:附注：   template argument deduction/substitution failed:
+../src/rk_backend.cpp:309:62: 附注：   mismatched types ‘std::initializer_list<_Tp>’ and ‘unsigned int’
+         face.box.right = std::min(image.width, face.box.right); face.box.bottom = std::min(image.height, face.box.bottom);
+                                                              ^
+In file included from /home/alientek/rv1126_sdk/prebuilts/gcc/linux-x86/arm/gcc-arm-8.3-2019.03-x86_64-arm-linux-gnueabihf/arm-linux-gnueabihf/include/c++/8.3.0/algorithm:62,
+                 from ../include/vision/core.hpp:3,
+                 from ../include/vision/rk_backend.hpp:4,
+                 from ../src/rk_backend.cpp:1:
+/home/alientek/rv1126_sdk/prebuilts/gcc/linux-x86/arm/gcc-arm-8.3-2019.03-x86_64-arm-linux-gnueabihf/arm-linux-gnueabihf/include/c++/8.3.0/bits/stl_algo.h:3456:5:附注： candidate: ‘template<class _Tp, class _Compare> constexpr _Tp std::min(std::initializer_list<_Tp>, _Compare)’
+     min(initializer_list<_Tp> __l, _Compare __comp)
+     ^~~
+/home/alientek/rv1126_sdk/prebuilts/gcc/linux-x86/arm/gcc-arm-8.3-2019.03-x86_64-arm-linux-gnueabihf/arm-linux-gnueabihf/include/c++/8.3.0/bits/stl_algo.h:3456:5:附注：   template argument deduction/substitution failed:
+../src/rk_backend.cpp:309:62: 附注：   mismatched types ‘std::initializer_list<_Tp>’ and ‘unsigned int’
+         face.box.right = std::min(image.width, face.box.right); face.box.bottom = std::min(image.height, face.box.bottom);
+                                                              ^
+../src/rk_backend.cpp:309:121: 错误： 对‘min(uint32_t&, int&)’的调用没有匹配的函数
+         face.box.right = std::min(image.width, face.box.right); face.box.bottom = std::min(image.height, face.box.bottom);
+                                                                                                                         ^
+In file included from /home/alientek/rv1126_sdk/prebuilts/gcc/linux-x86/arm/gcc-arm-8.3-2019.03-x86_64-arm-linux-gnueabihf/arm-linux-gnueabihf/include/c++/8.3.0/bits/char_traits.h:39,
+                 from /home/alientek/rv1126_sdk/prebuilts/gcc/linux-x86/arm/gcc-arm-8.3-2019.03-x86_64-arm-linux-gnueabihf/arm-linux-gnueabihf/include/c++/8.3.0/string:40,
+                 from /home/alientek/rv1126_sdk/prebuilts/gcc/linux-x86/arm/gcc-arm-8.3-2019.03-x86_64-arm-linux-gnueabihf/arm-linux-gnueabihf/include/c++/8.3.0/stdexcept:39,
+                 from ../include/vision/config.hpp:5,
+                 from ../include/vision/rk_backend.hpp:3,
+                 from ../src/rk_backend.cpp:1:
+/home/alientek/rv1126_sdk/prebuilts/gcc/linux-x86/arm/gcc-arm-8.3-2019.03-x86_64-arm-linux-gnueabihf/arm-linux-gnueabihf/include/c++/8.3.0/bits/stl_algobase.h:195:5: 附注： candidate: ‘template<class _Tp> constexpr const _Tp& std::min(const _Tp&, const _Tp&)’
+     min(const _Tp& __a, const _Tp& __b)
+     ^~~
+/home/alientek/rv1126_sdk/prebuilts/gcc/linux-x86/arm/gcc-arm-8.3-2019.03-x86_64-arm-linux-gnueabihf/arm-linux-gnueabihf/include/c++/8.3.0/bits/stl_algobase.h:195:5: 附注：   template argument deduction/substitution failed:
+../src/rk_backend.cpp:309:121: 附注：   deduced conflicting types for parameter ‘const _Tp’ (‘unsigned int’ and ‘int’)
+         face.box.right = std::min(image.width, face.box.right); face.box.bottom = std::min(image.height, face.box.bottom);
+                                                                                                                         ^
+In file included from /home/alientek/rv1126_sdk/prebuilts/gcc/linux-x86/arm/gcc-arm-8.3-2019.03-x86_64-arm-linux-gnueabihf/arm-linux-gnueabihf/include/c++/8.3.0/bits/char_traits.h:39,
+                 from /home/alientek/rv1126_sdk/prebuilts/gcc/linux-x86/arm/gcc-arm-8.3-2019.03-x86_64-arm-linux-gnueabihf/arm-linux-gnueabihf/include/c++/8.3.0/string:40,
+                 from /home/alientek/rv1126_sdk/prebuilts/gcc/linux-x86/arm/gcc-arm-8.3-2019.03-x86_64-arm-linux-gnueabihf/arm-linux-gnueabihf/include/c++/8.3.0/stdexcept:39,
+                 from ../include/vision/config.hpp:5,
+                 from ../include/vision/rk_backend.hpp:3,
+                 from ../src/rk_backend.cpp:1:
+/home/alientek/rv1126_sdk/prebuilts/gcc/linux-x86/arm/gcc-arm-8.3-2019.03-x86_64-arm-linux-gnueabihf/arm-linux-gnueabihf/include/c++/8.3.0/bits/stl_algobase.h:243:5: 附注： candidate: ‘template<class _Tp, class _Compare> constexpr const _Tp& std::min(const _Tp&, const _Tp&, _Compare)’
+     min(const _Tp& __a, const _Tp& __b, _Compare __comp)
+     ^~~
+/home/alientek/rv1126_sdk/prebuilts/gcc/linux-x86/arm/gcc-arm-8.3-2019.03-x86_64-arm-linux-gnueabihf/arm-linux-gnueabihf/include/c++/8.3.0/bits/stl_algobase.h:243:5: 附注：   template argument deduction/substitution failed:
+../src/rk_backend.cpp:309:121: 附注：   deduced conflicting types for parameter ‘const _Tp’ (‘unsigned int’ and ‘int’)
+         face.box.right = std::min(image.width, face.box.right); face.box.bottom = std::min(image.height, face.box.bottom);
+                                                                                                                         ^
+In file included from /home/alientek/rv1126_sdk/prebuilts/gcc/linux-x86/arm/gcc-arm-8.3-2019.03-x86_64-arm-linux-gnueabihf/arm-linux-gnueabihf/include/c++/8.3.0/algorithm:62,
+                 from ../include/vision/core.hpp:3,
+                 from ../include/vision/rk_backend.hpp:4,
+                 from ../src/rk_backend.cpp:1:
+/home/alientek/rv1126_sdk/prebuilts/gcc/linux-x86/arm/gcc-arm-8.3-2019.03-x86_64-arm-linux-gnueabihf/arm-linux-gnueabihf/include/c++/8.3.0/bits/stl_algo.h:3450:5:附注： candidate: ‘template<class _Tp> constexpr _Tp std::min(std::initializer_list<_Tp>)’
+     min(initializer_list<_Tp> __l)
+     ^~~
+/home/alientek/rv1126_sdk/prebuilts/gcc/linux-x86/arm/gcc-arm-8.3-2019.03-x86_64-arm-linux-gnueabihf/arm-linux-gnueabihf/include/c++/8.3.0/bits/stl_algo.h:3450:5:附注：   template argument deduction/substitution failed:
+../src/rk_backend.cpp:309:121: 附注：   mismatched types ‘std::initializer_list<_Tp>’ and ‘unsigned int’
+         face.box.right = std::min(image.width, face.box.right); face.box.bottom = std::min(image.height, face.box.bottom);
+                                                                                                                         ^
+In file included from /home/alientek/rv1126_sdk/prebuilts/gcc/linux-x86/arm/gcc-arm-8.3-2019.03-x86_64-arm-linux-gnueabihf/arm-linux-gnueabihf/include/c++/8.3.0/algorithm:62,
+                 from ../include/vision/core.hpp:3,
+                 from ../include/vision/rk_backend.hpp:4,
+                 from ../src/rk_backend.cpp:1:
+/home/alientek/rv1126_sdk/prebuilts/gcc/linux-x86/arm/gcc-arm-8.3-2019.03-x86_64-arm-linux-gnueabihf/arm-linux-gnueabihf/include/c++/8.3.0/bits/stl_algo.h:3456:5:附注： candidate: ‘template<class _Tp, class _Compare> constexpr _Tp std::min(std::initializer_list<_Tp>, _Compare)’
+     min(initializer_list<_Tp> __l, _Compare __comp)
+     ^~~
+/home/alientek/rv1126_sdk/prebuilts/gcc/linux-x86/arm/gcc-arm-8.3-2019.03-x86_64-arm-linux-gnueabihf/arm-linux-gnueabihf/include/c++/8.3.0/bits/stl_algo.h:3456:5:附注：   template argument deduction/substitution failed:
+../src/rk_backend.cpp:309:121: 附注：   mismatched types ‘std::initializer_list<_Tp>’ and ‘unsigned int’
+         face.box.right = std::min(image.width, face.box.right); face.box.bottom = std::min(image.height, face.box.bottom);
+                                                                                                                         ^
+[3/4] Building CXX object CMakeFiles/rkmedia_rockx_face_detection_rtsp.dir/src/pipeline.cpp.o
+ninja: build stopped: subcommand failed.
+alientek@ubuntu:~/桌面/15_rkmedia_rockx_face_detection_rtsp$ 

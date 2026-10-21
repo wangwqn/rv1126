@@ -1,0 +1,207 @@
+[root@ATK-DLRV1126:/]# cd /root
+[root@ATK-DLRV1126:~]# ./rkmedia_rockx_face_detection_rtsp --no-ai --no-osd
+media get entity by name: stream_cif_dvp_id0 is null
+media get entity by name: stream_cif_dvp_id1 is null
+media get entity by name: stream_cif_dvp_id2 is null
+media get entity by name: stream_cif_dvp_id3 is null
+media get entity by name: rkcif-lvds-subdev is null
+media get entity by name: rkcif-lite-lvds-subdev is null
+media get entity by name: stream_cif is null
+media get entity by name: rkcif-dvp-sof is null
+media get entity by name: rkisp-mpfbc-subdev is null
+media get entity by name: rkisp_dmapath is null
+media get entity by name: rockchip-mipi-dphy-rx is null
+media get entity by name: rkcif_dvp is null
+media get entity by name: rkcif_dvp is null
+media get entity by name: rkcif_lite_mipi_lvds is null
+media get entity by name: rkisp-mpfbc-subdev is null
+media get entity by name: rkisp_dmapath is null
+media get entity by name: rkcif_dvp is null
+media get entity by name: rkcif_mipi_lvds is null
+media get entity by name: rkcif_dvp is null
+media get entity by name: rkcif_lite_mipi_lvds is null
+media get entity by name: rkcif_mipi_lvds is null
+register factory : rkmpp
+register factory : rkmpp
+register factory : live555_rtsp_server
+register factory : video_enc
+register factory : audio_enc
+register factory : video_dec
+register factory : file_read_flow
+register factory : file_write_flow
+register factory : filter
+register factory : link_flow
+register factory : source_stream
+register factory : muxer_flow
+register factory : audio_dec
+register factory : output_stream
+register factory : move_detec
+register factory : occlusion_detec
+register factory : file_write_stream
+register factory : file_read_stream
+register factory : alsa_playback_stream
+register factory : alsa_capture_stream
+register factory : v4l2_capture_stream
+register factory : v4l2_output_stream
+register factory : drm_output_stream
+rga_api version 1.3.0_[11] (RGA is compiling with meson base: $PRODUCT_BASE)
+register factory : rkrga
+register factory : through_guard
+register factory : ANR
+register factory : AEC
+register factory : rockx_filter
+register factory : nn_result_input
+register factory : draw_filter
+register factory : rknn
+register factory : face_capture
+register factory : rockface_detect
+register factory : rockface_evaluate
+register factory : rockface_bodydetect
+register factory : rockface_recognize
+[INFO  rtsp_demo.c:281:rtsp_new_demo] rtsp server demo starting on port 8554
+[DEBUG rtsp_demo.c:481:rtsp_new_session] add session path: /live/main_stream
+[DEBUG rtsp_demo.c:481:rtsp_new_session] add session path: /live/sub_stream
+[08:22:08.875625][XCORE]:XCAM ERROR RkAiqCalibTag.cpp:6920: calib_check_getID_by_name(6920): subtag: focusInfPosition from parent tag: zoomfocus_tbl is unknown, assert!!!
+
+[08:22:08.875848][XCORE]:XCAM ERROR RkAiqCalibTag.cpp:6998: calib_check_tag_attrs(6998): parent_tag_id:439 tag_id:1201 --- tag id is is wrong: min:0 max:1201 
+
+[08:22:08.875885][XCORE]:XCAM ERROR RkAiqCalibTag.cpp:7044: calib_check_tag_attrs(7044): parent_tag_id:439 parent_tag_name:zoomfocus_tbl  tag_id:1201 tag_name:unknown --- ASSERT!!!
+
+[08:22:08.875924][XCORE]:XCAM ERROR RkAiqCalibTag.cpp:7188: calib_check_tag_mark(7188): parent_tag_id:439 tag_id:1201 --- tag_id is wrong:  min:0 max:1201
+
+[08:22:08.875967][XCORE]:XCAM ERROR RkAiqCalibTag.cpp:6920: calib_check_getID_by_name(6920): subtag: focusMacroPosition from parent tag: zoomfocus_tbl is unknown, assert!!!
+
+[08:22:08.876066][XCORE]:XCAM ERROR RkAiqCalibTag.cpp:6998: calib_check_tag_attrs(6998): parent_tag_id:439 tag_id:1201 --- tag id is is wrong: min:0 max:1201 
+
+[08:22:08.876175][XCORE]:XCAM ERROR RkAiqCalibTag.cpp:7044: calib_check_tag_attrs(7044): parent_tag_id:439 parent_tag_name:zoomfocus_tbl  tag_id:1201 tag_name:unknown --- ASSERT!!!
+
+[08:22:08.876251][XCORE]:XCAM ERROR RkAiqCalibTag.cpp:7188: calib_check_tag_mark(7188): parent_tag_id:439 tag_id:1201 --- tag_id is wrong:  min:0 max:1201
+
+[08:22:09.160735][XCORE]:XCAM ERROR v4l2_device.cpp:196: open device() failed
+[08:22:09.235300][CAMHW]:XCAM ERROR LensHw.cpp:199: get vcm cfg failed
+[08:22:09.254939][XCORE]:XCAM ERROR CamHwIsp20.cpp:3751: |||set DC-Iris PwmDuty: 100
+[08:22:09.255121][CAMHW]:XCAM ERROR LensHw.cpp:411: iris is not supported
+[08:22:09.297407][CAMHW]:XCAM ERROR LensHw.cpp:296: focus is not supported
+##RKMEDIA Log level: 2
+[RKMEDIA][SYS][Info]:text is all=2
+[RKMEDIA][SYS][Info]:module is all, log_level is 2
+[RKMEDIA][SYS][Info]:RK_MPI_VI_EnableChn: Enable VI[0:0]:rkispp_scale0, 1280x720 Start...
+[RKMEDIA][SYS][Info]:RKAIQ: parsing /dev/media0
+media get entity by name: rkcif-lvds-subdev is null
+media get entity by name: rkcif-lite-lvds-subdev is null
+[RKMEDIA][SYS][Info]:RKAIQ: parsing /dev/media1
+media get entity by name: rkisp-mpfbc-subdev is null
+media get entity by name: rkisp_dmapath is null
+media get entity by name: rockchip-mipi-dphy-rx is null
+[RKMEDIA][SYS][Info]:RKAIQ: model(rkisp0): isp_info(0): isp-subdev entity name: /dev/v4l-subdev5
+[RKMEDIA][SYS][Info]:RKAIQ: parsing /dev/media2
+media get entity by name: rkisp-mpfbc-subdev is null
+media get entity by name: rkisp_dmapath is null
+[RKMEDIA][SYS][Info]:RKAIQ: model(rkisp1): isp_info(1): isp-subdev entity name: /dev/v4l-subdev8
+[RKMEDIA][SYS][Info]:RKAIQ: parsing /dev/media3
+[RKMEDIA][SYS][Info]:RKAIQ: model(rkispp0): ispp_info(0): ispp-subdev entity name: /dev/v4l-subdev0
+[RKMEDIA][SYS][Info]:RKAIQ: parsing /dev/media4
+[RKMEDIA][SYS][Info]:RKAIQ: model(rkispp1): ispp_info(1): ispp-subdev entity name: /dev/v4l-subdev1
+[RKMEDIA][SYS][Info]:#V4l2Stream: camraID:0, Device:rkispp_scale0
+[RKMEDIA][SYS][Warn]:camera_id: 0, chn: rkispp_scale0
+[RKMEDIA][SYS][Warn]:camera_id: 0, chn: rkispp_scale0, idx: 0
+[RKMEDIA][SYS][Info]:#V4l2Stream: camera id:0, VideoNode:/dev/video31
+Using mplane plugin for capture 
+[RKMEDIA][SYS][Info]:#V4L2Ctx: open /dev/video31, fd 92
+[RKMEDIA][SYS][Info]:RK_MPI_VI_EnableChn: Enable VI[0:0]:rkispp_scale0, 1280x720 End...
+[RKMEDIA][SYS][Info]:RK_MPI_VI_EnableChn: Enable VI[0:1]:rkispp_scale1, 640x360 Start...
+[RKMEDIA][SYS][Info]:RKAIQ: parsing /dev/media0
+media get entity by name: rkcif-lvds-subdev is null
+media get entity by name: rkcif-lite-lvds-subdev is null
+[RKMEDIA][SYS][Info]:RKAIQ: parsing /dev/media1
+media get entity by name: rkisp-mpfbc-subdev is null
+media get entity by name: rkisp_dmapath is null
+media get entity by name: rockchip-mipi-dphy-rx is null
+[RKMEDIA][SYS][Info]:RKAIQ: model(rkisp0): isp_info(0): isp-subdev entity name: /dev/v4l-subdev5
+[RKMEDIA][SYS][Info]:RKAIQ: parsing /dev/media2
+media get entity by name: rkisp-mpfbc-subdev is null
+media get entity by name: rkisp_dmapath is null
+[RKMEDIA][SYS][Info]:RKAIQ: model(rkisp1): isp_info(1): isp-subdev entity name: /dev/v4l-subdev8
+[RKMEDIA][SYS][Info]:RKAIQ: parsing /dev/media3
+[RKMEDIA][SYS][Info]:RKAIQ: model(rkispp0): ispp_info(0): ispp-subdev entity name: /dev/v4l-subdev0
+[RKMEDIA][SYS][Info]:RKAIQ: parsing /dev/media4
+[RKMEDIA][SYS][Info]:RKAIQ: model(rkispp1): ispp_info(1): ispp-subdev entity name: /dev/v4l-subdev1
+[RKMEDIA][SYS][Info]:#V4l2Stream: camraID:0, Device:rkispp_scale1
+[RKMEDIA][SYS][Warn]:camera_id: 0, chn: rkispp_scale1
+[RKMEDIA][SYS][Warn]:camera_id: 0, chn: rkispp_scale1, idx: 0
+[RKMEDIA][SYS][Info]:#V4l2Stream: camera id:0, VideoNode:/dev/video32
+Using mplane plugin for capture 
+[RKMEDIA][SYS][Info]:#V4L2Ctx: open /dev/video32, fd 97
+[RKMEDIA][SYS][Info]:RK_MPI_VI_EnableChn: Enable VI[0:1]:rkispp_scale1, 640x360 End...
+[RKMEDIA][SYS][Info]:RK_MPI_RGA_CreateChn: Enable RGA[0], Rect<0,0,1280,720> Start...
+[RKMEDIA][SYS][Info]:FilterFlow:rkrga: Enable BufferPool! memtype:hw_mem, memcnt:4
+[RKMEDIA][SYS][Info]:Opened DRM device /dev/dri/card0: driver rockchip version 2.0.0.
+[RKMEDIA][SYS][Info]:RK_MPI_RGA_CreateChn: Enable RGA[0], Rect<0,0,1280,720> End...
+[RKMEDIA][SYS][Info]:RK_MPI_RGA_CreateChn: Enable RGA[1], Rect<0,0,640,360> Start...
+[RKMEDIA][SYS][Info]:FilterFlow:rkrga: Enable BufferPool! memtype:hw_mem, memcnt:4
+[RKMEDIA][SYS][Info]:RK_MPI_RGA_CreateChn: Enable RGA[1], Rect<0,0,640,360> End...
+[RKMEDIA][SYS][Info]:RK_MPI_SYS_Bind: Bind Mode[VI]:Chn[0] to Mode[RGA]:Chn[0]...
+[RKMEDIA][SYS][Info]:RK_MPI_SYS_Bind: Bind Mode[VI]:Chn[1] to Mode[RGA]:Chn[1]...
+[RKMEDIA][SYS][Info]:RK_MPI_VENC_CreateChn: Enable VENC[0], Type:5 Start...
+[RKMEDIA][SYS][Info]:ParseMediaConfigFromMap: rect_x = 0, rect_y = 0, rect.w = 1280, rect.h = 720 
+mpp[1125]: mpp_rt: NOT found ion allocator
+mpp[1125]: mpp_rt: found drm allocator
+mpp[1125]: mpp_info: mpp version: unknown mpp version for missing VCS info
+[RKMEDIA][VENC][Info]:MPP Encoder: MPPConfig: cfg init sucess!
+[RKMEDIA][VENC][Info]:MPP Encoder: qpMaxi use default value:48
+[RKMEDIA][VENC][Info]:MPP Encoder: qpMini use default value:8
+[RKMEDIA][VENC][Info]:MPP Encoder: qpMax use default value:48
+[RKMEDIA][VENC][Info]:MPP Encoder: qpMin use default value:8
+[RKMEDIA][VENC][Info]:MPP Encoder: qpInit use default value:-1
+[RKMEDIA][VENC][Info]:MPP Encoder: qpStep use default value:2
+[RKMEDIA][VENC][Info]:MPP Encoder: rect_x use default value:0
+[RKMEDIA][VENC][Info]:MPP Encoder: rect_y use default value:0
+[RKMEDIA][VENC][Info]:MPP Encoder: rotaion = 0
+[RKMEDIA][VENC][Info]:MPP Encoder: automatically calculate bsp with bps_target
+[RKMEDIA][VENC][Info]:MPP Encoder: Set output block mode.
+[RKMEDIA][VENC][Info]:MPP Encoder: Set input block mode.
+[RKMEDIA][VENC][Info]:MPP Encoder: bps:[3333333,3000000,2666666] fps: [20/1]->[20/1], gop:20 qpInit:-1, qpMin:8, qpMax:48, qpMinI:8, qpMaxI:48.
+[RKMEDIA][VENC][Info]:MPP Encoder: AVC: encode profile 66 level 0
+mpp[1125]: mpp_enc: MPP_ENC_SET_RC_CFG bps 3000000 [2666666 : 3333333] fps [20:20] gop 20
+mpp[1125]: h264e_api_v2: MPP_ENC_SET_PREP_CFG w:h [1280:720] stride [1280:720]
+mpp[1125]: mpp_enc: send header for set cfg change input/format 
+[RKMEDIA][VENC][Info]:MPP Encoder: w x h(1280[1280] x 720[720])
+mpp[1125]: mpp_enc: mode cbr bps [2666666:3000000:3333333] fps fix [20/1] -> fix [20/1] gop i [20] v [0]
+[RKMEDIA][SYS][Info]:RK_MPI_VENC_CreateChn: Enable VENC[0], Type:5 End...
+[RKMEDIA][SYS][Info]:RK_MPI_VENC_CreateChn: Enable VENC[1], Type:5 Start...
+[RKMEDIA][SYS][Info]:ParseMediaConfigFromMap: rect_x = 0, rect_y = 0, rect.w = 640, rect.h = 360 
+mpp[1125]: mpp_info: mpp version: unknown mpp version for missing VCS info
+[RKMEDIA][VENC][Info]:MPP Encoder: MPPConfig: cfg init sucess!
+[RKMEDIA][VENC][Info]:MPP Encoder: qpMaxi use default value:48
+[RKMEDIA][VENC][Info]:MPP Encoder: qpMini use default value:8
+[RKMEDIA][VENC][Info]:MPP Encoder: qpMax use default value:48
+[RKMEDIA][VENC][Info]:MPP Encoder: qpMin use default value:8
+[RKMEDIA][VENC][Info]:MPP Encoder: qpInit use default value:-1
+[RKMEDIA][VENC][Info]:MPP Encoder: qpStep use default value:2
+[RKMEDIA][VENC][Info]:MPP Encoder: rect_x use default value:0
+[RKMEDIA][VENC][Info]:MPP Encoder: rect_y use default value:0
+[RKMEDIA][VENC][Info]:MPP Encoder: rotaion = 0
+[RKMEDIA][VENC][Info]:MPP Encoder: automatically calculate bsp with bps_target
+[RKMEDIA][VENC][Info]:MPP Encoder: Set output block mode.
+[RKMEDIA][VENC][Info]:MPP Encoder: Set input block mode.
+[RKMEDIA][VENC][Info]:MPP Encoder: bps:[666666,600000,533333] fps: [20/1]->[20/1], gop:20 qpInit:-1, qpMin:8, qpMax:48, qpMinI:8, qpMaxI:48.
+[RKMEDIA][VENC][Info]:MPP Encoder: AVC: encode profile 66 level 0
+mpp[1125]: mpp_enc: MPP_ENC_SET_RC_CFG bps 600000 [533333 : 666666] fps [20:20] gop 20
+mpp[1125]: h264e_api_v2: MPP_ENC_SET_PREP_CFG w:h [640:360] stride [640:368]
+mpp[1125]: mpp_enc: send header for set cfg change input/format 
+[RKMEDIA][VENC][Info]:MPP Encoder: w x h(640[640] x 360[368])
+mpp[1125]: mpp_enc: mode cbr bps [533333:600000:666666] fps fix [20/1] -> fix [20/1] gop i [20] v [0]
+[RKMEDIA][SYS][Info]:RK_MPI_VENC_CreateChn: Enable VENC[1], Type:5 End...
+[RKMEDIA][SYS][Info]:Camera 0 stream 97 is started
+[RKMEDIA][SYS][Info]:Camera 0 stream 92 is started
+[RKMEDIA][SYS][Info]:INFO: RkmediaChnPopBuffer: Mode[RGA]:Chn[0] get mediabuffer timeout!
+[RKMEDIA][SYS][Info]:INFO: RkmediaChnPopBuffer: Mode[VENC]:Chn[0] get mediabuffer timeout!
+[RKMEDIA][SYS][Info]:INFO: RkmediaChnPopBuffer: Mode[RGA]:Chn[1] get mediabuffer timeout!
+Had init the rga dev ctx = 0x605e8
+rga_api version 1.3.0_[11] (RGA is compiling with meson base: $PRODUCT_BASE)
+mpp[1125]: h264e_sps: set level to 2.2
+mpp[1125]: h264e_sps: set level to 3.1
+[DEBUG utils.c:160:rtsp_codec_data_parse_from_user_h264] sps 24
+[DEBUG utils.c:168:rtsp_codec_data_parse_from_user_h264] pps 4
+[DEBUG utils.c:160:rtsp_codec_data_parse_from_user_h264] sps 25
+[DEBUG utils.c:168:rtsp_codec_data_parse_from_user_h264] pps 4

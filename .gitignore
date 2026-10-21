@@ -1,0 +1,15 @@
+.venv*/
+third_party/
+downloads/
+datasets/
+runs/
+artifacts/
+build*/
+Testing/
+__pycache__/
+.cache/
+*.pyc
+*.log
+.DS_Store
+.idea/
+.vscode/
