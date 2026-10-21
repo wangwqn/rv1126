@@ -93,12 +93,6 @@ public:
             if (config_.ai)
                 ai_bind_.reset(new Binding(sub_vi_->endpoint(), ai_rga_->endpoint()));
 
-            // RKAiq v1 applies forced ISPP module state through live parameter
-            // updates. Wait for the bound camera graph to start so the requested
-            // TNR state is not overwritten by startup parameters.
-            std::this_thread::sleep_for(std::chrono::milliseconds(200));
-            isp_->set_tnr(config_.tnr);
-
             running_.store(true);
             if (config_.ai) {
                 launch("ai-capture", [this] { ai_capture_loop(); });

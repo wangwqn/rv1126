@@ -100,9 +100,9 @@ cd /root/rv1126_objects
 保持这个终端运行；退出按 Ctrl+C。不要使用 --no-ai 或 --no-osd。
 前台启动后日志显示在当前终端，不再写入先前的后台日志文件。
 
-默认启用 TNR。可用 `grep TNR /proc/rkispp0` 确认；当前真机在 TNR 开启时约为
-29.5 FPS，4 Mbps 并未消除 PTS 缺口。若验收目标优先保证 30 FPS，可在相同命令末尾
-加 `--disable-tnr` 做 A/B 对照，不要把两种画质模式的结果混在同一组统计中。
+程序按 08:46 版本不主动开关 TNR，由板端 IQ 配置决定。可用
+`grep TNR /proc/rkispp0` 确认；当前板端显示 `TNR ON (mode: 2to1)`。该模式约为
+29.5 FPS，4 Mbps 并未消除 PTS 缺口。当前版本没有 `--disable-tnr` 参数。
 
 ## 8. 故障定位
 

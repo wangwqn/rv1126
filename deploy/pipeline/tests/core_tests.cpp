@@ -57,8 +57,7 @@ void expect_invalid(Function function, const std::string& message) {
 void test_config_parsing_and_validation() {
     const auto defaults = parse({});
     check(defaults.fps == 30 && defaults.ai_fps == 3 &&
-              defaults.bitrate == 4000000 && defaults.sub_bitrate == 600000 &&
-              defaults.tnr,
+              defaults.bitrate == 4000000 && defaults.sub_bitrate == 600000,
           "board-validated low-latency defaults are preserved");
 
     const auto configured = parse({"--width", "1920", "--height", "1080",
@@ -66,14 +65,14 @@ void test_config_parsing_and_validation() {
                                    "--rotation", "90", "--fps", "30",
                                    "--ai-fps", "6", "--rtsp-port", "9554",
                                    "--threshold", "0.75", "--no-ai", "--no-osd",
-                                   "--no-isp", "--disable-tnr"});
+                                   "--no-isp"});
     check(configured.width == 1920 && configured.height == 1080 &&
               configured.output_width() == 1080 && configured.output_height() == 1920,
           "rotation swaps configured output dimensions");
     check(configured.fps == 30 && configured.ai_fps == 6 &&
               configured.rtsp_port == 9554 && configured.threshold == 0.75f,
           "numeric command-line settings are parsed");
-    check(!configured.ai && !configured.osd && !configured.tnr && configured.iq_dir.empty(),
+    check(!configured.ai && !configured.osd && configured.iq_dir.empty(),
           "boolean disable switches are parsed");
 
     expect_invalid([] { parse({"--width", "641"}); },

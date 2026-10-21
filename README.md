@@ -13,7 +13,7 @@
 ```bash
 git clone git@github.com:wangwqn/rv1126.git
 cd rv1126
-git checkout v1.2.0
+git checkout v1.2.1
 bash scripts/verify_checkout.sh
 ```
 
@@ -151,10 +151,11 @@ cd /root/rv1126_objects
 `--rotation 270` 沿用原摄像头的安装方向；摄像头安装变化时再调整。
 退出用 Ctrl+C。不要带 `--no-ai` 或 `--no-osd`，否则无法看到检测标注。
 板载 2020 版 `librtsp` 在 8 Mbps 的 TCP interleaved 模式下实测会拥塞并损坏
-主流。当前按画质要求默认启用 ISP TNR，并把主流降为 4 Mbps。真机对照表明，
+主流。当前已恢复到 2026-10-21 08:46 的运行行为：程序不再主动开关 ISP TNR，
+由板端 IQ 配置保持 TNR 开启，主流为 4 Mbps。真机对照表明，
 TNR 开启时 5 Mbps 和 4 Mbps 均只有约 29.5 FPS，并稳态产生约每秒一个 PTS 缺口；
 因此降低码率不能解决这个帧率问题，瓶颈位于 4K IMX415 的 TNR/ISPP 前端，而非
-VENC 码率。需要严格 30 FPS 时可加 `--disable-tnr`，代价是弱光降噪画质下降。
+VENC 码率。当前版本不提供关闭 TNR 的命令行选项。
 
 局域网默认使用 RTP/UDP，减轻旧版 `librtsp` 的 TCP interleaved 队头阻塞。RTSP
 控制连接仍使用 TCP 8554，H.264 RTP/RTCP 数据使用客户端协商的 UDP 端口：

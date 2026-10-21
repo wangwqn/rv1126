@@ -7,7 +7,7 @@
 子流：640x360 输入，旋转 270 度后 360x640，H.264 Baseline，30 FPS，600 kbps
 AI：3 FPS，阈值 0.35
 缓冲：VI/RGA 8，编码包队列 8
-ISP：TNR 默认开启；`--disable-tnr` 可用于严格 30 FPS 对照
+ISP：程序不主动开关 TNR；当前板端 IQ 配置为 TNR ON（2to1）
 ```
 
 板载旧版 `librtsp` 在 TCP interleaved、主流 8 Mbps 时会出现 CSeq 和 H.264
@@ -61,10 +61,10 @@ OSD boxes/truncated、RTSP queue_high_water/shutdown_abandoned
 `pts_reset` 是 ISP 启动阶段超过 1 秒的时钟跳变，不计为成百上千个丢帧；
 稳态 `pts_gap` 才表示按 30 FPS 时间基准推算的缺帧数。
 
-程序现在会在 VI/RKAIQ 图启动后显式设置 TNR，避免启动参数覆盖请求。默认强制开启
-TNR；`--disable-tnr` 会在相同时机强制关闭。TNR 开启时 `/proc/rkispp0` 显示
-`mode: 2to1`，scale0/scale1 常见约 34–35 ms/帧和约 160–170 ms 管线 delay；这与
-约 29 FPS 和稳态 PTS 缺口一致。仍需用 30 分钟和 24 小时测试确认长期行为。
+当前已恢复到 08:46 的行为，程序不调用 RKAiq 模块开关 API，由板端 IQ 配置决定
+TNR 状态。真机 `/proc/rkispp0` 显示 `TNR ON (mode: 2to1)`；scale0/scale1 常见
+约 34–35 ms/帧和约 160–170 ms 管线 delay，这与约 29 FPS 和稳态 PTS 缺口一致。
+当前版本没有 `--disable-tnr` 参数。仍需用 30 分钟和 24 小时测试确认长期行为。
 
 ## Ubuntu 经局域网 UDP 验证
 

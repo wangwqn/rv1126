@@ -49,7 +49,7 @@
   29.45 FPS，子流 1746 帧、29.47 FPS，服务端稳态约每秒一个 `pts_gap`。
 - 继续降至 4 Mbps 后，主流 1719 帧、29.53 FPS，子流 1746 帧、29.46 FPS；
   主流当次还报告 RTP 丢包和 H.264 解码错误。降低码率没有恢复 30 FPS，当前
-  默认保留 TNR 和 4 Mbps；严格 30 FPS 场景可使用 `--disable-tnr` 回退。
+  当前恢复为 08:46 行为：程序不主动修改 TNR，由 IQ 配置保持 TNR ON，主流 4 Mbps。
 - 已将客户端验收默认改为 RTP/UDP；RTSP 控制仍走 TCP 8554。服务端日志确认
   `RTP/AVP/UDP`、动态 RTP/RTCP 端口和主/子双流协商成功。板端双路30秒测试均
   正常退出；无接收缓冲时主流曾丢9个 RTP包，加入2 MiB接收缓冲后单主流复测
@@ -66,7 +66,9 @@
   `/proc/<pid>/fd` 可见 DMA-BUF 句柄。
 - 30 分钟/24 小时稳定性和计时器光学对拍仍待执行；在完成 P50/P95/P99 对拍前，
   不宣称端到端低于 200 ms，也不把短测结果表述为长期绝对零丢帧。
+- 2026-10-21 恢复后真机确认 `/proc/rkispp0` 为 `TNR ON (mode: 2to1)`，
+  scale0/scale1 正常出帧，RTSP 8554 正常监听。
 - 当前板端程序 SHA256：
-  `3478c06fa56a8a28f8a5efad1b567cd703e9c733d9b6fd87217a53bfc26ce64e`。
+  `720878d078fab503580914c9a48738be28eeb182f7b8ac83ca79546803357267`。
 
 完整验收命令和口径见 `deploy/pipeline/docs/board-validation.md`。

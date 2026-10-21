@@ -39,9 +39,10 @@ cd /root/rv1126_objects
 
 主流地址为 `rtsp://开发板IP:8554/live/main_stream`，子流地址为
 `rtsp://开发板IP:8554/live/sub_stream`。
-当前主流默认 4 Mbps、子流默认 600 kbps，并默认开启 ISP TNR。真机实测表明，
+当前主流默认 4 Mbps、子流默认 600 kbps。程序按 08:46 版本不主动开关 ISP TNR，
+当前板端 IQ 配置保持 TNR 开启。真机实测表明，
 TNR 开启时 4/5 Mbps 都约为 29.5 FPS，降码率不能消除 ISPP 前端的 PTS 缺口。
-如果业务优先要求严格 30 FPS，可加 `--disable-tnr`，但弱光降噪画质会下降。
+当前发布程序没有 `--disable-tnr` 参数。
 8 Mbps 在板载旧版 `librtsp` 上仍是已知不稳定配置。
 
 局域网播放默认选择 RTP/UDP，RTSP 控制连接仍使用 TCP 8554。FFplay 示例：
