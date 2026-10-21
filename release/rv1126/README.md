@@ -39,10 +39,12 @@ cd /root/rv1126_objects
 
 主流地址为 `rtsp://开发板IP:8554/live/main_stream`，子流地址为
 `rtsp://开发板IP:8554/live/sub_stream`。
-当前主流默认 4 Mbps、子流默认 600 kbps。程序按 08:46 版本不主动开关 ISP TNR，
-当前板端 IQ 配置保持 TNR 开启。真机实测表明，
-TNR 开启时 4/5 Mbps 都约为 29.5 FPS，降码率不能消除 ISPP 前端的 PTS 缺口。
-当前发布程序没有 `--disable-tnr` 参数。
+当前主流默认 4 Mbps、子流默认 600 kbps。程序默认以 `--sensor-mode 1080p` 选择
+IMX415 1944×1097 RAW12、有效裁剪 1920×1080、30 FPS 模式，TNR 仍由板端 IQ
+配置保持开启。旧 4K 输入在 4/5 Mbps 时都约为 29.5 FPS；1080p 候选版约 10 秒
+短测为主流 299 帧、子流 300 帧且稳态 `pts_gap=0`，长时间验收仍待完成。
+板载 IQ 缺少 1080p ALSC 标定，因此该模式明确旁路 ALSC；正式产品应补做镜头标定。
+可用 `--sensor-mode 4k` 回退旧模式，当前发布程序没有 `--disable-tnr` 参数。
 8 Mbps 在板载旧版 `librtsp` 上仍是已知不稳定配置。
 
 局域网播放默认选择 RTP/UDP，RTSP 控制连接仍使用 TCP 8554。FFplay 示例：

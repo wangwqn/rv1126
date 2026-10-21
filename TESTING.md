@@ -92,6 +92,7 @@ adb shell 'netstat -lnt 2>/dev/null | grep :8554'
 adb shell
 cd /root/rv1126_objects
 ./rkmedia_object_detection_rtsp \
+  --sensor-mode 1080p \
   --width 1920 --height 1080 --sub-width 640 --sub-height 360 \
   --fps 30 --ai-fps 3 --bitrate 4000000 --sub-bitrate 600000 \
   --pool-buffers 8 --packet-queue 8 --rotation 270 --threshold 0.35
@@ -100,9 +101,17 @@ cd /root/rv1126_objects
 保持这个终端运行；退出按 Ctrl+C。不要使用 --no-ai 或 --no-osd。
 前台启动后日志显示在当前终端，不再写入先前的后台日志文件。
 
-程序按 08:46 版本不主动开关 TNR，由板端 IQ 配置决定。可用
-`grep TNR /proc/rkispp0` 确认；当前板端显示 `TNR ON (mode: 2to1)`。该模式约为
-29.5 FPS，4 Mbps 并未消除 PTS 缺口。当前版本没有 `--disable-tnr` 参数。
+程序不主动开关 TNR，由板端 IQ 配置决定。默认 `--sensor-mode 1080p` 在 RKAiq
+启动前选择 IMX415 的 1944×1097 RAW12 模式，其有效裁剪为 1920×1080。启动日志
+应只出现一次 `camera: ALSC bypassed`；这是因为板载 IQ 文件没有 1080p 镜头阴影
+标定。可用下面命令确认 TNR 输入、状态和处理间隔：
+
+```bash
+adb shell 'cat /proc/rkispp0'
+```
+
+应看到 1920×1080 输入和 `TNR ON (mode: 2to1)`。需要与旧模式对照时添加
+`--sensor-mode 4k`；当前版本没有 `--disable-tnr` 参数。
 
 ## 8. 故障定位
 

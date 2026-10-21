@@ -57,20 +57,23 @@ void expect_invalid(Function function, const std::string& message) {
 void test_config_parsing_and_validation() {
     const auto defaults = parse({});
     check(defaults.fps == 30 && defaults.ai_fps == 3 &&
-              defaults.bitrate == 4000000 && defaults.sub_bitrate == 600000,
+              defaults.bitrate == 4000000 && defaults.sub_bitrate == 600000 &&
+              defaults.sensor_mode == "1080p",
           "board-validated low-latency defaults are preserved");
 
     const auto configured = parse({"--width", "1920", "--height", "1080",
                                    "--sub-width", "640", "--sub-height", "360",
                                    "--rotation", "90", "--fps", "30",
                                    "--ai-fps", "6", "--rtsp-port", "9554",
+                                   "--sensor-mode", "current",
                                    "--threshold", "0.75", "--no-ai", "--no-osd",
                                    "--no-isp"});
     check(configured.width == 1920 && configured.height == 1080 &&
               configured.output_width() == 1080 && configured.output_height() == 1920,
           "rotation swaps configured output dimensions");
     check(configured.fps == 30 && configured.ai_fps == 6 &&
-              configured.rtsp_port == 9554 && configured.threshold == 0.75f,
+              configured.rtsp_port == 9554 && configured.threshold == 0.75f &&
+              configured.sensor_mode == "current",
           "numeric command-line settings are parsed");
     check(!configured.ai && !configured.osd && configured.iq_dir.empty(),
           "boolean disable switches are parsed");
@@ -85,6 +88,8 @@ void test_config_parsing_and_validation() {
                    "non-finite confidence is rejected");
     expect_invalid([] { parse({"--unknown", "1"}); },
                    "unknown options are rejected");
+    expect_invalid([] { parse({"--sensor-mode", "720p"}); },
+                   "unsupported sensor modes are rejected");
     expect_invalid([] { parse({"--fps"}); },
                    "missing option values are rejected");
     expect_invalid([] { parse({"--bitrate", "999999999999999999999"}); },

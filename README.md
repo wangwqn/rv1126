@@ -13,7 +13,7 @@
 ```bash
 git clone git@github.com:wangwqn/rv1126.git
 cd rv1126
-git checkout v1.2.1
+git checkout v1.3.0
 bash scripts/verify_checkout.sh
 ```
 
@@ -41,7 +41,8 @@ adb shell 'cd /root/rv1126_objects && ./rkmedia_object_detection_rtsp --rotation
 子码流保留无标注的低分辨率预览，AI 从子流取帧，检测结果按坐标缩放到主流。
 标签已写入编码前的像素，VLC 无需额外插件。
 
-实时管线默认已升级为 1920x1080@30FPS 主流：VI 使用 V4L2 DMABUF，主、子视频
+实时管线默认将 IMX415 切换到 1944×1097 RAW12、裁剪 1920×1080、30 FPS，
+因此 TNR 直接处理 1080P 而不再先处理 4K。VI 使用 V4L2 DMABUF，主、子视频
 分别经 RGA NV12 硬件通道直绑 VENC；第三个低分辨率 RGA BGR 通道只供 RKNN。
 主流不再转成整帧 RGB，也不再用 OpenCV 修改 1080P 像素。中文名和置信度只在
 AI 结果更新时生成小型透明 ARGB 标签条，再由 RGA 与三条硬件边组成标注框。
@@ -143,6 +144,7 @@ adb pull /root/rv1126_objects/result.jpg ./artifacts/device-result.jpg
 adb shell
 cd /root/rv1126_objects
 ./rkmedia_object_detection_rtsp \
+  --sensor-mode 1080p \
   --width 1920 --height 1080 --sub-width 640 --sub-height 360 \
   --fps 30 --ai-fps 3 --bitrate 4000000 --sub-bitrate 600000 \
   --pool-buffers 8 --packet-queue 8 --rotation 270 --threshold 0.35
@@ -151,11 +153,16 @@ cd /root/rv1126_objects
 `--rotation 270` 沿用原摄像头的安装方向；摄像头安装变化时再调整。
 退出用 Ctrl+C。不要带 `--no-ai` 或 `--no-osd`，否则无法看到检测标注。
 板载 2020 版 `librtsp` 在 8 Mbps 的 TCP interleaved 模式下实测会拥塞并损坏
-主流。当前已恢复到 2026-10-21 08:46 的运行行为：程序不再主动开关 ISP TNR，
-由板端 IQ 配置保持 TNR 开启，主流为 4 Mbps。真机对照表明，
-TNR 开启时 5 Mbps 和 4 Mbps 均只有约 29.5 FPS，并稳态产生约每秒一个 PTS 缺口；
-因此降低码率不能解决这个帧率问题，瓶颈位于 4K IMX415 的 TNR/ISPP 前端，而非
-VENC 码率。当前版本不提供关闭 TNR 的命令行选项。
+主流，因此默认仍为 4 Mbps。旧版在 4K IMX415 输入、TNR 开启时只有约 29.5 FPS，
+且稳态约每秒出现一个 PTS 缺口；降低编码码率不能改善前端吞吐。当前版本改为
+`--sensor-mode 1080p`，在 RKAiq 启动前用 V4L2 subdev API 选择 IMX415 的原生
+1080p@30 RAW12 模式。短测 10 秒时主流 299 帧、子流 300 帧，稳态
+`pts_gap=0`；长期结果仍须按真机验收文档复测。`--sensor-mode 4k` 可恢复旧的
+3864×2192 RAW10 模式，`current` 则保持外部预先配置的模式。
+
+当前板载 IMX415 IQ 文件只有 3840×2160 的 ALSC 镜头阴影标定。1080p 模式不会
+伪造或缩放标定表，而是明确旁路 ALSC，并在启动时提示一次；TNR 仍由 IQ 配置保持
+开启。正式产品若要求边缘亮度/色彩一致性，应针对当前镜头制作 1920×1080 IQ 标定。
 
 局域网默认使用 RTP/UDP，减轻旧版 `librtsp` 的 TCP interleaved 队头阻塞。RTSP
 控制连接仍使用 TCP 8554，H.264 RTP/RTCP 数据使用客户端协商的 UDP 端口：

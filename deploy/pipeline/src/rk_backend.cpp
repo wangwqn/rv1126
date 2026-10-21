@@ -9,8 +9,14 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <dirent.h>
+#include <fcntl.h>
+#include <linux/media-bus-format.h>
+#include <linux/v4l2-subdev.h>
 #include <stdexcept>
 #include <string>
+#include <sys/ioctl.h>
+#include <unistd.h>
 
 namespace vision {
 namespace {
@@ -27,6 +33,102 @@ public:
 private:
     MEDIA_BUFFER buffer_;
 };
+
+#ifdef RKAIQ
+class FileDescriptor : Noncopyable {
+public:
+    explicit FileDescriptor(int fd) : fd_(fd) {}
+    ~FileDescriptor() { if (fd_ >= 0) ::close(fd_); }
+    int get() const { return fd_; }
+private:
+    int fd_;
+};
+
+std::string system_error(const std::string& operation) {
+    return operation + ": " + std::strerror(errno);
+}
+
+std::string read_first_line(const std::string& path) {
+    FILE* file = std::fopen(path.c_str(), "r");
+    if (!file) return {};
+    char line[256]{};
+    const bool read = std::fgets(line, sizeof(line), file) != nullptr;
+    std::fclose(file);
+    if (!read) return {};
+    std::string value(line);
+    while (!value.empty() && (value.back() == '\n' || value.back() == '\r'))
+        value.pop_back();
+    return value;
+}
+
+std::string find_sensor_subdev(const std::string& sensor_name) {
+    DIR* raw_dir = ::opendir("/sys/class/video4linux");
+    if (!raw_dir) throw std::runtime_error(system_error("open video4linux sysfs"));
+    std::unique_ptr<DIR, int (*)(DIR*)> dir(raw_dir, ::closedir);
+    while (const dirent* entry = ::readdir(dir.get())) {
+        const std::string node(entry->d_name);
+        const std::string prefix = "v4l-subdev";
+        if (node.compare(0, prefix.size(), prefix) != 0) continue;
+        const std::string name = read_first_line("/sys/class/video4linux/" + node + "/name");
+        if (name == sensor_name) return "/dev/" + node;
+    }
+    throw std::runtime_error("cannot find V4L2 subdevice for sensor " + sensor_name);
+}
+
+void configure_imx415_mode(const std::string& sensor_name, const std::string& mode) {
+    if (mode == "current") {
+        std::fprintf(stderr, "camera: keep externally configured sensor mode\n");
+        return;
+    }
+    if (sensor_name.find("imx415") == std::string::npos)
+        throw std::runtime_error("sensor-mode " + mode + " requires IMX415, found " + sensor_name);
+
+    const bool full_hd = mode == "1080p";
+    const std::uint32_t width = full_hd ? 1944u : 3864u;
+    const std::uint32_t height = full_hd ? 1097u : 2192u;
+    const std::uint32_t code = full_hd ? MEDIA_BUS_FMT_SGBRG12_1X12
+                                       : MEDIA_BUS_FMT_SGBRG10_1X10;
+    const std::string path = find_sensor_subdev(sensor_name);
+    const int raw_fd = ::open(path.c_str(), O_RDWR | O_CLOEXEC);
+    if (raw_fd < 0) throw std::runtime_error(system_error("open " + path));
+    FileDescriptor fd(raw_fd);
+
+    v4l2_subdev_format format{};
+    format.which = V4L2_SUBDEV_FORMAT_ACTIVE;
+    format.pad = 0;
+    if (::ioctl(fd.get(), VIDIOC_SUBDEV_G_FMT, &format) < 0)
+        throw std::runtime_error(system_error("get IMX415 format"));
+    format.format.width = width;
+    format.format.height = height;
+    format.format.code = code;
+    format.format.field = V4L2_FIELD_NONE;
+    if (::ioctl(fd.get(), VIDIOC_SUBDEV_S_FMT, &format) < 0)
+        throw std::runtime_error(system_error("set IMX415 " + mode + " format"));
+    if (format.format.width != width || format.format.height != height ||
+        format.format.code != code) {
+        throw std::runtime_error("IMX415 rejected requested " + mode + " sensor mode");
+    }
+
+    v4l2_subdev_selection selection{};
+    selection.which = V4L2_SUBDEV_FORMAT_ACTIVE;
+    selection.pad = 0;
+    selection.target = V4L2_SEL_TGT_CROP_BOUNDS;
+    if (::ioctl(fd.get(), VIDIOC_SUBDEV_G_SELECTION, &selection) == 0) {
+        const std::uint32_t expected_width = full_hd ? 1920u : 3840u;
+        const std::uint32_t expected_height = full_hd ? 1080u : 2160u;
+        if (selection.r.width != expected_width || selection.r.height != expected_height)
+            throw std::runtime_error("unexpected IMX415 crop for " + mode + " sensor mode");
+        std::fprintf(stderr,
+                     "camera: %s %ux%u RAW%u, active crop %dx%d at (%d,%d)\n",
+                     path.c_str(), width, height, full_hd ? 12u : 10u,
+                     selection.r.width, selection.r.height,
+                     selection.r.left, selection.r.top);
+    } else {
+        std::fprintf(stderr, "camera: %s %ux%u RAW%u (crop query unavailable)\n",
+                     path.c_str(), width, height, full_hd ? 12u : 10u);
+    }
+}
+#endif
 } // namespace
 
 void check_rk(int status, const char* operation) {
@@ -73,6 +175,7 @@ Isp::Isp(const Config& c) : camera_(c.camera) {
     const char* sensor_name = info.sensor_info.sensor_name;
     if (!sensor_name || !*sensor_name)
         throw std::runtime_error("ISP camera has no RKAiq static metadata");
+    configure_imx415_mode(sensor_name, c.sensor_mode);
     auto* context = rk_aiq_uapi_sysctl_init(sensor_name,
                                             c.iq_dir.c_str(), nullptr, nullptr);
     if (!context) throw std::runtime_error("ISP Init returned a null RKAiq context");
@@ -81,6 +184,21 @@ Isp::Isp(const Config& c) : camera_(c.camera) {
         check_rk(rk_aiq_uapi_sysctl_prepare(context, 0, 0,
                                             RK_AIQ_WORKING_MODE_NORMAL),
                  "ISP Prepare");
+        if (c.sensor_mode == "1080p") {
+            // The board's bundled IMX415 IQ file only contains a 3840x2160
+            // lens-shading table. Leaving ALSC in automatic mode at 1920x1080
+            // makes this old RKAiq release fail the lookup and print an error
+            // on every frame. Do not fabricate a calibration table: bypass LSC
+            // until a lens-specific 1920x1080 IQ calibration is available.
+            rk_aiq_lsc_attrib_t lsc{};
+            check_rk(rk_aiq_user_api_alsc_GetAttrib(context, &lsc),
+                     "ISP GetLSCAttrib");
+            lsc.byPass = true;
+            check_rk(rk_aiq_user_api_alsc_SetAttrib(context, lsc),
+                     "ISP SetLSCAttrib");
+            std::fprintf(stderr,
+                         "camera: ALSC bypassed: IQ file has no calibrated 1920x1080 table\n");
+        }
         check_rk(rk_aiq_uapi_sysctl_start(context), "ISP Start");
         started_ = true;
         frameRateInfo_t rate{};

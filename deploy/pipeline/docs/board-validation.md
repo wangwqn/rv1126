@@ -7,7 +7,9 @@
 子流：640x360 输入，旋转 270 度后 360x640，H.264 Baseline，30 FPS，600 kbps
 AI：3 FPS，阈值 0.35
 缓冲：VI/RGA 8，编码包队列 8
+传感器：IMX415 1944x1097 RAW12，驱动有效裁剪 1920x1080，30 FPS
 ISP：程序不主动开关 TNR；当前板端 IQ 配置为 TNR ON（2to1）
+ALSC：1080p 模式旁路；板载 IQ 文件仅有 3840x2160 镜头阴影标定
 ```
 
 板载旧版 `librtsp` 在 TCP interleaved、主流 8 Mbps 时会出现 CSeq 和 H.264
@@ -27,9 +29,11 @@ ISP：程序不主动开关 TNR；当前板端 IQ 配置为 TNR ON（2to1）
 | 4 Mbps | 开 | 1719 帧，29.53 FPS | 1746 帧，29.46 FPS | 约每秒增加 1 个 gap | 未改善；当次主流另有 RTP 丢包 |
 | 5 Mbps | 关 | 服务端约 30 FPS | 服务端约 30 FPS | 稳态 0 | 严格帧率回退 |
 
-4 Mbps 已按当前画质/带宽取舍设为默认值，但它不能解决 TNR 带来的帧率缺口。
-IMX415 仍以 3840×2160 输入，TNR 位于 VENC 和 RTSP 之前；降低 H.264 目标码率只会
-减轻编码输出和网络带宽，不能提高 ISPP/TNR 产帧速度。
+4 Mbps 已按当前画质/带宽取舍设为默认值，但它不能解决 4K TNR 带来的帧率缺口。
+TNR 位于 VENC 和 RTSP 之前；降低 H.264 目标码率只会减轻编码输出和网络带宽，
+不能提高 ISPP/TNR 产帧速度。因此 1.3.0 默认直接选择驱动已有的 1080p@30 模式。
+初步约 10 秒服务端测试为主流 299 帧、子流 300 帧、稳态 `pts_gap=0`；需继续完成
+60 秒双路网络测试及 30 分钟/24 小时稳定性测试后，才能认定长期零丢帧。
 
 ## RTP/UDP 传输策略
 
@@ -61,10 +65,16 @@ OSD boxes/truncated、RTSP queue_high_water/shutdown_abandoned
 `pts_reset` 是 ISP 启动阶段超过 1 秒的时钟跳变，不计为成百上千个丢帧；
 稳态 `pts_gap` 才表示按 30 FPS 时间基准推算的缺帧数。
 
-当前已恢复到 08:46 的行为，程序不调用 RKAiq 模块开关 API，由板端 IQ 配置决定
-TNR 状态。真机 `/proc/rkispp0` 显示 `TNR ON (mode: 2to1)`；scale0/scale1 常见
-约 34–35 ms/帧和约 160–170 ms 管线 delay，这与约 29 FPS 和稳态 PTS 缺口一致。
-当前版本没有 `--disable-tnr` 参数。仍需用 30 分钟和 24 小时测试确认长期行为。
+程序不调用 RKAiq TNR 开关 API，由板端 IQ 配置决定 TNR 状态。旧 4K 模式下
+`/proc/rkispp0` 显示 `TNR ON (mode: 2to1)`，scale0/scale1 常见约 34–35 ms/帧和
+约 160–170 ms 管线 delay，与约 29 FPS 和稳态 PTS 缺口一致。默认 1080p 模式应
+显示 1920×1080 输入；必须保存新的处理间隔和 delay 作为验收证据。当前版本没有
+`--disable-tnr` 参数。
+
+板载 IQ XML 的 ALSC `resolutionAlll` 只有 `3840x2160`。程序在 1080p 模式下会
+主动设置 `byPass=true`，而不是错误复用或缩放 4K 标定表；启动日志应只提示一次，
+不应再出现每帧 `can't find 1920x1080 in lscResName`。旁路避免错误校正，但可能使
+镜头边缘亮度/颜色一致性下降，正式量产需重新标定 IQ。
 
 ## Ubuntu 经局域网 UDP 验证
 

@@ -10,6 +10,9 @@ namespace vision {
 
 struct Config {
     int camera = 0;
+    // IMX415 driver mode selected before RKAiq starts. "current" leaves the
+    // sensor under external control; "4k" restores the previous RAW10 mode.
+    std::string sensor_mode = "1080p";
     std::string main_node = "rkispp_scale0";
     std::string sub_node = "rkispp_scale1";
     int width = 1920, height = 1080;
@@ -59,6 +62,8 @@ struct Config {
         if (main_node.empty() || sub_node.empty() || main_node == sub_node ||
             (ai && (model.empty() || metadata.empty())) || (osd && labels.empty()))
             throw std::invalid_argument("two distinct VI nodes and valid model/label paths are required");
+        if (sensor_mode != "1080p" && sensor_mode != "4k" && sensor_mode != "current")
+            throw std::invalid_argument("sensor-mode must be 1080p, 4k or current");
     }
 };
 
@@ -79,6 +84,7 @@ inline Config parse_config(int argc, char** argv) {
         if (i + 1 == argc) throw std::invalid_argument("missing value: " + key);
         const std::string value = argv[++i];
         if (key == "--main-node") c.main_node = value;
+        else if (key == "--sensor-mode") c.sensor_mode = value;
         else if (key == "--model") c.model = value;
         else if (key == "--metadata") c.metadata = value;
         else if (key == "--labels") c.labels = value;
@@ -114,6 +120,7 @@ inline Config parse_config(int argc, char** argv) {
 inline void print_usage(std::ostream& out) {
     out << "RKMedia RV1126 object detection (H.264 RTSP, Chinese labels on main stream)\n"
            "  --model objects.rknn --metadata objects.json --labels labels.png\n"
+           "  --sensor-mode 1080p|4k|current (default: 1080p RAW12)\n"
            "  --main-node rkispp_scale0 --sub-node rkispp_scale1 --camera 0\n"
            "  --width 1920 --height 1080 --sub-width 640 --sub-height 360\n"
            "  --rotation 0 --fps 30 --ai-fps 3 --threshold 0.35\n"
