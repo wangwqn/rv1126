@@ -3,16 +3,23 @@
 ## 已固化的默认参数
 
 ```text
-主流：1920x1080 输入，旋转 270 度后 1080x1920，H.264 Baseline，30 FPS，4 Mbps
+主流：1920x1080 输入，旋转 270 度后 1080x1920，H.264 Baseline，30 FPS，6 Mbps
 子流：640x360 输入，旋转 270 度后 360x640，H.264 Baseline，30 FPS，600 kbps
 AI：3 FPS，阈值 0.35
 缓冲：VI/RGA 8，编码包队列 8
 ```
 
 板载旧版 `librtsp` 在 TCP interleaved、主流 8 Mbps 时会出现 CSeq 和 H.264
-损坏；降为 4 Mbps 后，主、子双路并发接收 20 秒均为 585 帧且无协议或码流错误。
-585/20 秒也说明客户端实际约为 29.x FPS，而不是绝对无缺口的 30.000 FPS；因此
-当前只达到了稳定的“名义 30 FPS”，尚未达到严格的“零丢帧”。
+损坏。2026-10-21 以子流固定 600 kbps、AI/OSD 开启、RTSP over TCP 同时解码两路：
+
+- 5 Mbps 连续 60 秒：主、子流各 1800 帧，退出码 0，无解码或协议警告。
+- 6 Mbps 连续 60 秒：主、子流各 1800 帧，退出码 0，无解码或协议警告。
+- 6 Mbps 连续 120 秒：主、子流各 3600 帧，客户端约 30.13 FPS；服务端
+  `pts_gap=0`、`queue_high_water=2/8`、`stale_drop=0`。
+
+因此 6 Mbps 是当前开发板、BSP、旧 `librtsp` 和 Windows 热点链路组合中“已经
+验证的稳定上限”，不是对所有网络环境的保证。8 Mbps 仍为已知失败点，中间的
+7 Mbps 尚未测试；弱 Wi-Fi 环境可显式降为 5 Mbps 或 4 Mbps。
 
 ## 启动
 
@@ -32,10 +39,10 @@ OSD boxes/truncated、RTSP queue_high_water/shutdown_abandoned
 `pts_reset` 是 ISP 启动阶段超过 1 秒的时钟跳变，不计为成百上千个丢帧；
 稳态 `pts_gap` 才表示按 30 FPS 时间基准推算的缺帧数。
 
-真机隔离测试中，关闭 AI/OSD 后约 18 秒仍出现 17 个 `pts_gap`；把 VI/RGA
-缓冲从 8 提到 16 也没有改善。由此可排除 AI 背压和缓冲池不足，当前缺口位于
-IMX415→RKAIQ/RKMedia 输入节拍或旧 BSP 驱动侧。修复需要升级/修改相机 BSP 并重新
-测量，而不是在应用层伪造重复帧；重复帧只能让计数变成 30，不能满足“零丢帧”。
+早期真机隔离测试中，关闭 AI/OSD 后约 18 秒仍出现 17 个 `pts_gap`，把 VI/RGA
+缓冲从 8 提到 16 也没有改善。根因是 TNR 关闭时机早于 VI/RKAIQ 完成初始化；改为
+摄像头图启动后关闭 TNR，本次 6 Mbps 测试稳态 `pts_gap=0`。仍需用 30 分钟和
+24 小时测试确认长期行为，不能用短测结果承诺绝对零丢帧。
 
 ## Ubuntu 经 USB ADB 验证
 

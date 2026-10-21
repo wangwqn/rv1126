@@ -78,7 +78,7 @@ adb shell
 cd /root/rv1126_objects
 ./rkmedia_object_detection_rtsp \
   --width 1920 --height 1080 --sub-width 640 --sub-height 360 \
-  --fps 30 --ai-fps 3 --bitrate 4000000 --sub-bitrate 600000 \
+  --fps 30 --ai-fps 3 --bitrate 6000000 --sub-bitrate 600000 \
   --pool-buffers 8 --packet-queue 8 --rotation 270 --threshold 0.35
 ```
 

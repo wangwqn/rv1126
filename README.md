@@ -139,14 +139,17 @@ adb shell
 cd /root/rv1126_objects
 ./rkmedia_object_detection_rtsp \
   --width 1920 --height 1080 --sub-width 640 --sub-height 360 \
-  --fps 30 --ai-fps 3 --bitrate 4000000 --sub-bitrate 600000 \
+  --fps 30 --ai-fps 3 --bitrate 6000000 --sub-bitrate 600000 \
   --pool-buffers 8 --packet-queue 8 --rotation 270 --threshold 0.35
 ```
 
 `--rotation 270` 沿用原摄像头的安装方向；摄像头安装变化时再调整。
 退出用 Ctrl+C。不要带 `--no-ai` 或 `--no-osd`，否则无法看到检测标注。
 板载 2020 版 `librtsp` 在 8 Mbps 的 TCP interleaved 模式下实测会拥塞并损坏
-主流；4 Mbps 双路并发 20 秒无协议/码流错误，因此将其固化为当前默认值。
+主流。5 Mbps 双路解码 60 秒通过；6 Mbps 双路解码 60 秒和 120 秒耐久复测均通过，
+两路分别完整收到 1800/3600 帧且无协议、H.264 或 PTS 缺口，因此当前默认值为
+6 Mbps。这里的“稳定上限”只适用于当前开发板、BSP 和热点网络组合；链路较差时可用
+`--bitrate 5000000` 或 `--bitrate 4000000` 主动降码率。
 
 Ubuntu 经 ADB 测试：
 

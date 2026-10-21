@@ -57,7 +57,7 @@ void expect_invalid(Function function, const std::string& message) {
 void test_config_parsing_and_validation() {
     const auto defaults = parse({});
     check(defaults.fps == 30 && defaults.ai_fps == 3 &&
-              defaults.bitrate == 4000000 && defaults.sub_bitrate == 600000,
+              defaults.bitrate == 6000000 && defaults.sub_bitrate == 600000,
           "board-validated low-latency defaults are preserved");
 
     const auto configured = parse({"--width", "1920", "--height", "1080",

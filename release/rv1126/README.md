@@ -39,6 +39,9 @@ cd /root/rv1126_objects
 
 主流地址为 `rtsp://开发板IP:8554/live/main_stream`，子流地址为
 `rtsp://开发板IP:8554/live/sub_stream`。
+当前主流默认 6 Mbps、子流默认 600 kbps；6 Mbps 已通过 120 秒主/子双路并发
+解码测试，8 Mbps 在板载旧版 `librtsp` 上不稳定。弱 Wi-Fi 可在启动时指定
+`--bitrate 5000000` 或 `--bitrate 4000000`。
 
 如二进制提示缺少共享库、非法指令或摄像头节点不存在，请不要替换板载系统库，应使用
 `deploy/pipeline/cmake/toolchains/rv1126.cmake` 和目标板对应 SDK 重新交叉编译。

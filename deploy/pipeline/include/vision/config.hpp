@@ -16,10 +16,10 @@ struct Config {
     int sub_width = 640, sub_height = 360;
     int rotation = 0;
     int fps = 30, ai_fps = 3;
-    // The bundled 2020 librtsp TCP-interleaved path becomes unstable near
-    // 8 Mbit/s on this RV1126 image. 4 Mbit/s was verified with two clients
-    // while preserving 1080P30; see docs/board-validation.md.
-    int bitrate = 4000000, sub_bitrate = 600000;
+    // The bundled 2020 librtsp TCP-interleaved path is unstable at 8 Mbit/s
+    // on this RV1126 image. 6 Mbit/s passed concurrent main/sub decode and a
+    // 120-second soak test; see docs/board-validation.md.
+    int bitrate = 6000000, sub_bitrate = 600000;
     int pool_buffers = 8;
     int packet_queue = 8;
     int rtsp_port = 8554;
@@ -117,7 +117,7 @@ inline void print_usage(std::ostream& out) {
            "  --main-node rkispp_scale0 --sub-node rkispp_scale1 --camera 0\n"
            "  --width 1920 --height 1080 --sub-width 640 --sub-height 360\n"
            "  --rotation 0 --fps 30 --ai-fps 3 --threshold 0.35\n"
-           "  --bitrate 4000000 --sub-bitrate 600000 --pool-buffers 8\n"
+           "  --bitrate 6000000 --sub-bitrate 600000 --pool-buffers 8\n"
            "  --packet-queue 8\n"
            "  --rtsp-port 8554 --result-ttl-ms 300 --stall-timeout-ms 5000\n"
            "  --iq-dir /etc/iqfiles\n"
