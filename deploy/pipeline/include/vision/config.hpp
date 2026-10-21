@@ -16,10 +16,9 @@ struct Config {
     int sub_width = 640, sub_height = 360;
     int rotation = 0;
     int fps = 30, ai_fps = 3;
-    // The bundled 2020 librtsp TCP-interleaved path is unstable at 8 Mbit/s
-    // on this RV1126 image. 6 Mbit/s passed concurrent main/sub decode and a
-    // 120-second soak test; see docs/board-validation.md.
-    int bitrate = 6000000, sub_bitrate = 600000;
+    // Keep extra bandwidth headroom while TNR is enabled. The bundled 2020
+    // librtsp TCP-interleaved path remains unstable at 8 Mbit/s.
+    int bitrate = 4000000, sub_bitrate = 600000;
     int pool_buffers = 8;
     int packet_queue = 8;
     int rtsp_port = 8554;
@@ -27,7 +26,7 @@ struct Config {
     int stall_timeout_ms = 5000;
     int ai_delay_ms = 0;
     float threshold = 0.35f;
-    bool ai = true, osd = true;
+    bool ai = true, osd = true, tnr = true;
     std::string iq_dir = "/etc/iqfiles";
     std::string model = "objects.rknn", metadata = "objects.json", labels = "labels.png";
 
@@ -76,6 +75,7 @@ inline Config parse_config(int argc, char** argv) {
         if (key == "--no-ai") { c.ai = false; continue; }
         if (key == "--no-osd") { c.osd = false; continue; }
         if (key == "--no-isp") { c.iq_dir.clear(); continue; }
+        if (key == "--disable-tnr") { c.tnr = false; continue; }
         if (i + 1 == argc) throw std::invalid_argument("missing value: " + key);
         const std::string value = argv[++i];
         if (key == "--main-node") c.main_node = value;
@@ -117,11 +117,11 @@ inline void print_usage(std::ostream& out) {
            "  --main-node rkispp_scale0 --sub-node rkispp_scale1 --camera 0\n"
            "  --width 1920 --height 1080 --sub-width 640 --sub-height 360\n"
            "  --rotation 0 --fps 30 --ai-fps 3 --threshold 0.35\n"
-           "  --bitrate 6000000 --sub-bitrate 600000 --pool-buffers 8\n"
+           "  --bitrate 4000000 --sub-bitrate 600000 --pool-buffers 8\n"
            "  --packet-queue 8\n"
            "  --rtsp-port 8554 --result-ttl-ms 300 --stall-timeout-ms 5000\n"
            "  --iq-dir /etc/iqfiles\n"
-           "  --no-ai --no-osd --no-isp --ai-delay-ms 0 --help\n"
+           "  --no-ai --no-osd --no-isp --disable-tnr --ai-delay-ms 0 --help\n"
            "NV12 dimensions must be even; nodes must share the same FOV.\n"
            "Paths: /live/main_stream and /live/sub_stream\n";
 }

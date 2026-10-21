@@ -3,10 +3,11 @@
 ## 已固化的默认参数
 
 ```text
-主流：1920x1080 输入，旋转 270 度后 1080x1920，H.264 Baseline，30 FPS，6 Mbps
+主流：1920x1080 输入，旋转 270 度后 1080x1920，H.264 Baseline，30 FPS，4 Mbps
 子流：640x360 输入，旋转 270 度后 360x640，H.264 Baseline，30 FPS，600 kbps
 AI：3 FPS，阈值 0.35
 缓冲：VI/RGA 8，编码包队列 8
+ISP：TNR 默认开启；`--disable-tnr` 可用于严格 30 FPS 对照
 ```
 
 板载旧版 `librtsp` 在 TCP interleaved、主流 8 Mbps 时会出现 CSeq 和 H.264
@@ -17,9 +18,18 @@ AI：3 FPS，阈值 0.35
 - 6 Mbps 连续 120 秒：主、子流各 3600 帧，客户端约 30.13 FPS；服务端
   `pts_gap=0`、`queue_high_water=2/8`、`stale_drop=0`。
 
-因此 6 Mbps 是当前开发板、BSP、旧 `librtsp` 和 Windows 热点链路组合中“已经
-验证的稳定上限”，不是对所有网络环境的保证。8 Mbps 仍为已知失败点，中间的
-7 Mbps 尚未测试；弱 Wi-Fi 环境可显式降为 5 Mbps 或 4 Mbps。
+以上结果均为 TNR 关闭时的历史基线。恢复 TNR 后进行了同板、同模型、AI/OSD
+开启的 60 秒板端本机 UDP 对照：
+
+| 主流码率 | TNR | 主流 | 子流 | 服务端 PTS | 结论 |
+| --- | --- | --- | --- | --- | --- |
+| 5 Mbps | 开 | 1732 帧，29.45 FPS | 1746 帧，29.47 FPS | 约每秒增加 1 个 gap | 未达到 30 FPS |
+| 4 Mbps | 开 | 1719 帧，29.53 FPS | 1746 帧，29.46 FPS | 约每秒增加 1 个 gap | 未改善；当次主流另有 RTP 丢包 |
+| 5 Mbps | 关 | 服务端约 30 FPS | 服务端约 30 FPS | 稳态 0 | 严格帧率回退 |
+
+4 Mbps 已按当前画质/带宽取舍设为默认值，但它不能解决 TNR 带来的帧率缺口。
+IMX415 仍以 3840×2160 输入，TNR 位于 VENC 和 RTSP 之前；降低 H.264 目标码率只会
+减轻编码输出和网络带宽，不能提高 ISPP/TNR 产帧速度。
 
 ## RTP/UDP 传输策略
 
@@ -31,7 +41,7 @@ UDP RTP/RTCP socket 和 `client_port/server_port` 协商实现，不需要更换
 UDP RTP/RTCP 端口。无额外接收缓冲时主流曾报告一次丢9个 RTP包；单主流使用
 2 MiB socket buffer、512包重排队列和200 ms最大重排等待复测30秒无丢包。
 这说明 UDP消除了发送阻塞，但网络拥塞时可能丢包；因此保留 TCP作为回退方式，
-并保持主流6 Mbps，不因改用 UDP恢复到已知不稳定的8 Mbps。
+并保持主流4 Mbps，不因改用 UDP恢复到已知不稳定的8 Mbps。
 
 ## 启动
 
@@ -51,10 +61,10 @@ OSD boxes/truncated、RTSP queue_high_water/shutdown_abandoned
 `pts_reset` 是 ISP 启动阶段超过 1 秒的时钟跳变，不计为成百上千个丢帧；
 稳态 `pts_gap` 才表示按 30 FPS 时间基准推算的缺帧数。
 
-早期真机隔离测试中，关闭 AI/OSD 后约 18 秒仍出现 17 个 `pts_gap`，把 VI/RGA
-缓冲从 8 提到 16 也没有改善。根因是 TNR 关闭时机早于 VI/RKAIQ 完成初始化；改为
-摄像头图启动后关闭 TNR，本次 6 Mbps 测试稳态 `pts_gap=0`。仍需用 30 分钟和
-24 小时测试确认长期行为，不能用短测结果承诺绝对零丢帧。
+程序现在会在 VI/RKAIQ 图启动后显式设置 TNR，避免启动参数覆盖请求。默认强制开启
+TNR；`--disable-tnr` 会在相同时机强制关闭。TNR 开启时 `/proc/rkispp0` 显示
+`mode: 2to1`，scale0/scale1 常见约 34–35 ms/帧和约 160–170 ms 管线 delay；这与
+约 29 FPS 和稳态 PTS 缺口一致。仍需用 30 分钟和 24 小时测试确认长期行为。
 
 ## Ubuntu 经局域网 UDP 验证
 
@@ -82,9 +92,15 @@ ffplay -rtsp_transport tcp rtsp://127.0.0.1:8554/live/main_stream
 ## CPU 与内存
 
 BusyBox `top` 默认以单核为 100%，四核 RV1126 上显示 100% 等于整机容量约 25%。
-当前双路客户端与 AI 3 FPS 同时运行时，按 `/proc` 总时钟滴答测得应用为 25.23%，
-RSS/HWM 约 119948 kB。该口径只统计应用进程；当次整机 busy 为 47.85%，其中还含
-内核、ISP、USB ADB 和网络。验收时必须明确采用“应用进程”还是“整机”口径。
+4 Mbps、TNR 开启、双路本机客户端与 AI 3 FPS 同时运行时，按 `/proc` 总时钟滴答
+测得应用占四核总容量 24.65%，相当于 BusyBox `top` 单核口径约 98.61%；RSS/HWM
+约 119600 kB、33 线程。该口径只统计应用进程；当次整机 busy 为 40.64%，其中还含
+内核、ISP、USB ADB 和网络。CPU/NPU 温度约 78.3/73.8°C。
+
+短时空载流 A/B 中，TNR 开启相对关闭使应用占比约增加 2.79 个百分点、整机 busy
+约增加 8.03 个百分点，CPU 温度约增加 0.9°C。采样起始温度和 NPU 动态频率并非
+完全一致，因此这些数值只用于判断趋势。板端没有可读的电流或功率传感器，不能从
+CPU 百分比换算出瓦数；整机电功耗应以 USB 串联功率计在相同场景稳态记录至少 5 分钟。
 
 ## DMA-BUF 与 OSD
 

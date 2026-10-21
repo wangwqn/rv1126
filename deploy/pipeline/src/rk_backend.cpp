@@ -98,20 +98,22 @@ Isp::Isp(const Config& c) : camera_(c.camera) {
     throw std::runtime_error("ISP support disabled at build time; use --no-isp with an externally managed ISP");
 #endif
 }
-void Isp::disable_tnr() {
+void Isp::set_tnr(bool requested) {
 #ifdef RKAIQ
     auto* context = static_cast<rk_aiq_sys_ctx_t*>(context_);
     if (!context) return;
     // This old RKAiq generation applies forced ISPP module state while it is
     // processing live parameters. Calling this only after VI has started makes
     // the request reach the hardware instead of being overwritten at startup.
-    check_rk(rk_aiq_uapi_sysctl_setModuleCtl(context, RK_MODULE_TNR, false),
-             "ISP Disable TNR");
-    bool enabled = true;
-    check_rk(rk_aiq_uapi_sysctl_getModuleCtl(context, RK_MODULE_TNR, &enabled),
+    check_rk(rk_aiq_uapi_sysctl_setModuleCtl(context, RK_MODULE_TNR, requested),
+             requested ? "ISP Enable TNR" : "ISP Disable TNR");
+    bool actual = !requested;
+    check_rk(rk_aiq_uapi_sysctl_getModuleCtl(context, RK_MODULE_TNR, &actual),
              "ISP Get TNR state");
-    if (enabled) throw std::runtime_error("ISP TNR remained enabled");
-    std::fprintf(stderr, "ISP TNR forced off\n");
+    if (actual != requested)
+        throw std::runtime_error(requested ? "ISP TNR remained disabled"
+                                           : "ISP TNR remained enabled");
+    std::fprintf(stderr, "ISP TNR forced %s\n", requested ? "on" : "off");
 #endif
 }
 Isp::~Isp() {

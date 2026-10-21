@@ -93,12 +93,16 @@ adb shell
 cd /root/rv1126_objects
 ./rkmedia_object_detection_rtsp \
   --width 1920 --height 1080 --sub-width 640 --sub-height 360 \
-  --fps 30 --ai-fps 3 --bitrate 6000000 --sub-bitrate 600000 \
+  --fps 30 --ai-fps 3 --bitrate 4000000 --sub-bitrate 600000 \
   --pool-buffers 8 --packet-queue 8 --rotation 270 --threshold 0.35
 ```
 
 保持这个终端运行；退出按 Ctrl+C。不要使用 --no-ai 或 --no-osd。
 前台启动后日志显示在当前终端，不再写入先前的后台日志文件。
+
+默认启用 TNR。可用 `grep TNR /proc/rkispp0` 确认；当前真机在 TNR 开启时约为
+29.5 FPS，4 Mbps 并未消除 PTS 缺口。若验收目标优先保证 30 FPS，可在相同命令末尾
+加 `--disable-tnr` 做 A/B 对照，不要把两种画质模式的结果混在同一组统计中。
 
 ## 8. 故障定位
 

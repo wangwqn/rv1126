@@ -13,7 +13,7 @@
 ```bash
 git clone git@github.com:wangwqn/rv1126.git
 cd rv1126
-git checkout v1.1.0
+git checkout v1.2.0
 bash scripts/verify_checkout.sh
 ```
 
@@ -144,17 +144,17 @@ adb shell
 cd /root/rv1126_objects
 ./rkmedia_object_detection_rtsp \
   --width 1920 --height 1080 --sub-width 640 --sub-height 360 \
-  --fps 30 --ai-fps 3 --bitrate 6000000 --sub-bitrate 600000 \
+  --fps 30 --ai-fps 3 --bitrate 4000000 --sub-bitrate 600000 \
   --pool-buffers 8 --packet-queue 8 --rotation 270 --threshold 0.35
 ```
 
 `--rotation 270` 沿用原摄像头的安装方向；摄像头安装变化时再调整。
 退出用 Ctrl+C。不要带 `--no-ai` 或 `--no-osd`，否则无法看到检测标注。
 板载 2020 版 `librtsp` 在 8 Mbps 的 TCP interleaved 模式下实测会拥塞并损坏
-主流。5 Mbps 双路解码 60 秒通过；6 Mbps 双路解码 60 秒和 120 秒耐久复测均通过，
-两路分别完整收到 1800/3600 帧且无协议、H.264 或 PTS 缺口，因此当前默认值为
-6 Mbps。这里的“稳定上限”只适用于当前开发板、BSP 和热点网络组合；链路较差时可用
-`--bitrate 5000000` 或 `--bitrate 4000000` 主动降码率。
+主流。当前按画质要求默认启用 ISP TNR，并把主流降为 4 Mbps。真机对照表明，
+TNR 开启时 5 Mbps 和 4 Mbps 均只有约 29.5 FPS，并稳态产生约每秒一个 PTS 缺口；
+因此降低码率不能解决这个帧率问题，瓶颈位于 4K IMX415 的 TNR/ISPP 前端，而非
+VENC 码率。需要严格 30 FPS 时可加 `--disable-tnr`，代价是弱光降噪画质下降。
 
 局域网默认使用 RTP/UDP，减轻旧版 `librtsp` 的 TCP interleaved 队头阻塞。RTSP
 控制连接仍使用 TCP 8554，H.264 RTP/RTCP 数据使用客户端协商的 UDP 端口：

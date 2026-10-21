@@ -45,7 +45,7 @@ class Isp : Noncopyable {
 public:
     explicit Isp(const Config& c);
     ~Isp();
-    void disable_tnr();
+    void set_tnr(bool enabled);
 private:
     int camera_;
     void* context_ = nullptr;

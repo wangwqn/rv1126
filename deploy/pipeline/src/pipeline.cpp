@@ -94,10 +94,10 @@ public:
                 ai_bind_.reset(new Binding(sub_vi_->endpoint(), ai_rga_->endpoint()));
 
             // RKAiq v1 applies forced ISPP module state through live parameter
-            // updates. Wait for the bound camera graph to start before forcing
-            // TNR off; spatial NR remains enabled.
+            // updates. Wait for the bound camera graph to start so the requested
+            // TNR state is not overwritten by startup parameters.
             std::this_thread::sleep_for(std::chrono::milliseconds(200));
-            isp_->disable_tnr();
+            isp_->set_tnr(config_.tnr);
 
             running_.store(true);
             if (config_.ai) {
