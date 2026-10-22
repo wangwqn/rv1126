@@ -150,7 +150,8 @@ adb shell 'cat /proc/rkispp0'
 bash scripts/capture_runtime_latency.sh 60
 ```
 
-脚本使用 `--latency-stats` 运行程序，保存应用 P50/P95/P99/max 和测试前后的
-`/proc/rkispp0` 快照。默认结果目录在 `/tmp`。各指标的准确起止边界和当前真机
-基线见 `deploy/pipeline/docs/runtime-latency.md`；其中 `server_total` 只到板端
-RTSP 发送 API 返回，不是 VLC 显示端到端时延。
+脚本使用 `--latency-csv` 运行程序，保存逐样本 CSV、全量 P50/P95/P99/max、SVG
+时序图和测试前后的 `/proc/rkispp0` 快照。默认结果目录在 Ubuntu 的 `/tmp`。
+各指标的准确起止边界和当前真机基线见
+`deploy/pipeline/docs/runtime-latency.md`；其中 `server_total` 只到板端 RTSP 发送
+API 返回，不是 VLC 显示端到端时延。

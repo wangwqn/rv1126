@@ -2,8 +2,8 @@
 
 ## 开启和抓取
 
-程序默认不采集百分位，避免生产运行时增加无意义的统计开销。调试时添加
-`--latency-stats`，每 5 秒会在普通计数器后输出一行：
+程序默认不采集时延，避免生产运行时增加无意义的统计开销。调试时添加
+`--latency-stats`，每 5 秒会在普通计数器后输出滚动汇总：
 
 ```bash
 cd /root/rv1126_objects
@@ -15,14 +15,59 @@ cd /root/rv1126_objects
 是启动后累计有效样本数。窗口最多保留最近 512 个样本。硬件图启动后的前三秒
 属于预热期，不进入统计，避免 VI/RGA 中构图期间保留的旧帧污染稳态结果。
 
+需要保存每一个样本时使用 `--latency-csv`。它会自动开启 `--latency-stats`：
+
+```bash
+./rkmedia_object_detection_rtsp \
+  --sensor-mode 1080p --rotation 270 --threshold 0.35 \
+  --latency-csv /tmp/latency.csv
+```
+
+CSV 格式为：
+
+```text
+observed_monotonic_us,frame_pts_us,stage,latency_us,latency_ms
+```
+
+- `observed_monotonic_us`：样本完成时的单调时钟，可用于绘制横轴。
+- `frame_pts_us`：对应 MEDIA_BUFFER 帧的 PTS，跨阶段关联同一帧。
+- `stage`：下表定义的阶段名称。
+- `latency_us/latency_ms`：同一数值的整数微秒和便于查看的毫秒表示。
+
+业务线程不会直接写文件，而是把定长记录放进容量 8192 的有界队列，由独立线程
+批量写盘并每秒刷新。终端会显示 `csv(written/dropped/queued/high_water/error)`；
+有效测试必须满足 `dropped=0` 和 `error=0`。队列满时只丢诊断记录，不阻塞视频。
+板端 `/tmp` 是内存文件系统，长测 CSV 可能达到约 50–80 MB/小时，不适合无限采集。
+
 需要把应用日志和 ISPP/TNR 驱动快照一起保存时，在 Ubuntu 仓库根目录执行：
 
 ```bash
 bash scripts/capture_runtime_latency.sh 60
 ```
 
-脚本要求当前没有另一个实例占用摄像头，默认把结果写入 `/tmp`。也可以用第二个参数
-指定输出目录。脚本不会把临时日志提交到 Git。
+脚本要求当前没有另一个实例占用摄像头，默认把结果写入 Ubuntu 的 `/tmp`，也可以
+用第二个参数指定输出目录。它会从开发板拉取逐样本 CSV，生成全量百分位表和 SVG：
+
+```text
+application.log          完整程序日志
+latency-summary.txt      程序每 5 秒的滚动汇总
+latency.csv              每个有效样本
+latency-percentiles.csv  根据整个 CSV 重新计算的百分位
+latency.svg              14 个阶段的时序小多图
+rkispp-before/after.txt  ISPP/TNR 驱动快照
+```
+
+也可以手动拉取和绘图；绘图只依赖 Python 3 标准库：
+
+```bash
+adb pull /tmp/latency.csv ./latency.csv
+python3 scripts/plot_latency_csv.py ./latency.csv ./latency.svg \
+  > ./latency-percentiles.csv
+```
+
+终端汇总只使用最近 512 个样本，绘图脚本输出的百分位使用 CSV 中的全部样本。
+绘图时每个阶段最多显示 1200 个保留局部极值的点，避免大文件生成过大的 SVG；
+百分位计算仍使用全部数据。脚本不会把临时日志自动提交到 Git。
 
 ## 指标边界
 

@@ -6,7 +6,7 @@
 - 权重来源：`runs/objects11_relu2/weights/best.pt`，12 epoch 的训练基线。
 - 模型：`artifacts/objects-rv1126.rknn`，1,899,778 字节。
 - 当前真机候选程序 SHA256：见 `release/rv1126/SHA256SUMS`；1.4.0 增加了可选的
-  分段时延统计，模型文件未变化。
+  分段时延统计，1.5.0 增加逐样本异步 CSV 和 SVG 绘图，模型文件未变化。
 - 模型 SHA256：`661285a3c12e43fd58c2e2018adb1d8da5766bbf43601992b3468854b78402b8`。
 - 转换工具：RKNN Toolkit 1.7.5；板端原 runtime 1.7.0 / driver 6.4.6.5.351518 实测可加载。
 - ONNX 检查和 PyTorch/ONNX Runtime 数值对比通过。

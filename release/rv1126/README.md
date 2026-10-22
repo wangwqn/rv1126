@@ -52,6 +52,10 @@ IMX415 1944×1097 RAW12、有效裁剪 1920×1080、30 FPS 模式，TNR 仍由�
 主/子编码输出和 RTSP 发送路径的滚动 P50/P95/P99/max；正常运行默认关闭。
 完整指标边界和抓取脚本见 `deploy/pipeline/docs/runtime-latency.md`。
 
+保存逐样本数据时使用 `--latency-csv /tmp/latency.csv`。CSV 由独立线程异步写入；
+推荐从 Ubuntu 执行 `bash scripts/capture_runtime_latency.sh 60`，自动拉取 CSV、
+检查是否丢诊断记录，并生成全量百分位表和 SVG 图。
+
 局域网播放默认选择 RTP/UDP，RTSP 控制连接仍使用 TCP 8554。FFplay 示例：
 
 ```bash

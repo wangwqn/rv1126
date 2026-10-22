@@ -13,7 +13,7 @@
 ```bash
 git clone git@github.com:wangwqn/rv1126.git
 cd rv1126
-git checkout v1.4.0
+git checkout v1.5.0
 bash scripts/verify_checkout.sh
 ```
 
@@ -24,6 +24,10 @@ bash scripts/verify_checkout.sh
 需要分析运行时分段时延时，用 `--latency-stats` 开启 512 样本滚动
 P50/P95/P99/max 统计；指标边界、真机结果和一键抓取方法见
 `deploy/pipeline/docs/runtime-latency.md`。
+
+需要保存全部样本并绘图时使用 `--latency-csv /tmp/latency.csv`，或执行
+`bash scripts/capture_runtime_latency.sh 60`，脚本会自动拉取 CSV、重新计算全量
+百分位并生成不依赖第三方 Python 包的 SVG 图。
 
 相同开发板/rootfs 可直接上传已经编译好的物体检测发布包：
 

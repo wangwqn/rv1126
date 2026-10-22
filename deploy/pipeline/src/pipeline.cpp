@@ -1,6 +1,7 @@
 #include "vision/pipeline.hpp"
 
 #include "vision/core.hpp"
+#include "vision/latency_trace.hpp"
 #include "vision/rk_backend.hpp"
 #include <algorithm>
 #include <atomic>
@@ -71,6 +72,7 @@ public:
     explicit Impl(Config config)
         : config_(std::move(config)), ai_frames_(1),
           encoded_packets_(static_cast<std::size_t>(config_.packet_queue)) {
+        if (!config_.latency_csv.empty()) config_.latency_stats = true;
         config_.validate();
     }
 
@@ -81,6 +83,8 @@ public:
         if (started_) throw std::logic_error("Pipeline::start may only be called once");
         started_ = true;
         try {
+            if (!config_.latency_csv.empty())
+                latency_csv_.reset(new AsyncLatencyCsv(config_.latency_csv));
             rtsp_.reset(new RtspServer(config_.rtsp_port));
             isp_.reset(new Isp(config_));
             media_.reset(new MediaSystem());
@@ -146,6 +150,7 @@ public:
             running_.store(false);
             close_queues();
             join_threads();
+            if (latency_csv_) latency_csv_->close();
             teardown();
             throw;
         }
@@ -159,6 +164,7 @@ public:
         close_queues();
         sleep_cv_.notify_all();
         join_threads();
+        if (latency_csv_) latency_csv_->close();
         teardown();
     }
 
@@ -202,6 +208,15 @@ public:
                 << format_latency("send", rtsp_send_[1].snapshot()) << ' '
                 << format_latency("server_total", rtsp_total_[1].snapshot()) << ")"
                 << " invalid_pts=" << invalid_latency_pts_.load();
+            if (latency_csv_) {
+                out << " csv(written=" << latency_csv_->written()
+                    << ", dropped=" << latency_csv_->dropped()
+                    << ", queued=" << latency_csv_->queued()
+                    << ", high_water=" << latency_csv_->high_water()
+                    << '/' << latency_csv_->capacity()
+                    << ", error=" << (latency_csv_->failed() ? 1 : 0)
+                    << ", path=" << latency_csv_->path() << ')';
+            }
         }
         return out.str();
     }
@@ -270,11 +285,18 @@ private:
         return config_.latency_stats && now >= latency_start_;
     }
 
-    void observe_pts_age(LatencyWindow& window, uint64_t pts,
+    void observe_latency(LatencyMetric metric, LatencyWindow& window,
+                         uint64_t pts, Clock::time_point now, uint64_t latency_us) {
+        if (!latency_active(now)) return;
+        window.observe_us(latency_us);
+        if (latency_csv_) latency_csv_->push(metric, now, pts, latency_us);
+    }
+
+    void observe_pts_age(LatencyMetric metric, LatencyWindow& window, uint64_t pts,
                          Clock::time_point now) {
         if (!latency_active(now)) return;
         uint64_t age = 0;
-        if (pts_age_us(pts, now, age)) window.observe_us(age);
+        if (pts_age_us(pts, now, age)) observe_latency(metric, window, pts, now, age);
         else ++invalid_latency_pts_;
     }
 
@@ -290,7 +312,7 @@ private:
             }
             const auto ready_at = Clock::now();
             last_frame = ready_at;
-            observe_pts_age(ai_rga_age_, source->pts(), ready_at);
+            observe_pts_age(LatencyMetric::ai_rga_age, ai_rga_age_, source->pts(), ready_at);
             ++ai_source_;
             ai_budget += config_.ai_fps;
             if (ai_budget >= config_.fps) {
@@ -310,15 +332,17 @@ private:
             if (!ai_frames_.pop(source, std::chrono::milliseconds(100))) continue;
             const auto dequeued_at = Clock::now();
             if (latency_active(dequeued_at) && source.queued_at != Clock::time_point{})
-                ai_queue_.observe_us(duration_us(dequeued_at - source.queued_at));
+                observe_latency(LatencyMetric::ai_queue, ai_queue_, source.frame->pts(),
+                                dequeued_at, duration_us(dequeued_at - source.queued_at));
             if (!interruptible_delay(config_.ai_delay_ms)) return;
             const auto infer_start = Clock::now();
             auto detection = detector_->infer(source.frame);
             const auto infer_end = Clock::now();
             detection.completed_at = infer_end;
             if (latency_active(infer_end))
-                ai_infer_.observe_us(duration_us(infer_end - infer_start));
-            observe_pts_age(ai_total_, detection.pts_us, infer_end);
+                observe_latency(LatencyMetric::ai_infer, ai_infer_, detection.pts_us,
+                                infer_end, duration_us(infer_end - infer_start));
+            observe_pts_age(LatencyMetric::ai_total, ai_total_, detection.pts_us, infer_end);
             detections_.publish(std::move(detection));
             ++ai_completed_;
         }
@@ -336,11 +360,14 @@ private:
                                          config_.output_height());
                 const auto update_start = Clock::now();
                 if (latency_active(update_start) && update_start >= result->completed_at)
-                    osd_wait_.observe_us(duration_us(update_start - result->completed_at));
+                    observe_latency(LatencyMetric::osd_wait, osd_wait_, result->pts_us,
+                                    update_start,
+                                    duration_us(update_start - result->completed_at));
                 const std::size_t displayed = compositor_->update(boxes);
                 const auto update_end = Clock::now();
                 if (latency_active(update_end))
-                    osd_update_.observe_us(duration_us(update_end - update_start));
+                    observe_latency(LatencyMetric::osd_update, osd_update_, result->pts_us,
+                                    update_end, duration_us(update_end - update_start));
                 overlay_boxes_.store(displayed);
                 if (boxes.size() > displayed)
                     overlay_truncated_.fetch_add(boxes.size() - displayed);
@@ -391,7 +418,9 @@ private:
             }
             const auto ready_at = Clock::now();
             last_packet = ready_at;
-            observe_pts_age(venc_age_[stream], packet->pts(), ready_at);
+            observe_pts_age(stream ? LatencyMetric::sub_venc_age
+                                   : LatencyMetric::main_venc_age,
+                            venc_age_[stream], packet->pts(), ready_at);
             if (account_pts(stream, packet->pts())) ++venc_frames_[stream];
             EncodedPacket encoded;
             encoded.stream = stream;
@@ -407,14 +436,20 @@ private:
             if (encoded_packets_.pop(packet, std::chrono::milliseconds(10))) {
                 const auto send_start = Clock::now();
                 if (latency_active(send_start) && packet.ready_at != Clock::time_point{})
-                    rtsp_wait_[packet.stream].observe_us(
-                        duration_us(send_start - packet.ready_at));
+                    observe_latency(packet.stream ? LatencyMetric::sub_rtsp_wait
+                                                  : LatencyMetric::main_rtsp_wait,
+                                    rtsp_wait_[packet.stream], packet.frame->pts(), send_start,
+                                    duration_us(send_start - packet.ready_at));
                 rtsp_->send(packet.stream, packet.frame);
                 const auto send_end = Clock::now();
                 if (latency_active(send_end))
-                    rtsp_send_[packet.stream].observe_us(
-                        duration_us(send_end - send_start));
-                observe_pts_age(rtsp_total_[packet.stream], packet.frame->pts(), send_end);
+                    observe_latency(packet.stream ? LatencyMetric::sub_send
+                                                  : LatencyMetric::main_send,
+                                    rtsp_send_[packet.stream], packet.frame->pts(), send_end,
+                                    duration_us(send_end - send_start));
+                observe_pts_age(packet.stream ? LatencyMetric::sub_server_total
+                                              : LatencyMetric::main_server_total,
+                                rtsp_total_[packet.stream], packet.frame->pts(), send_end);
                 ++packets_sent_;
                 packet.frame.reset();
             }
@@ -443,6 +478,7 @@ private:
     std::unique_ptr<HardwareCompositor> compositor_;
     std::unique_ptr<ObjectDetector> detector_;
     std::unique_ptr<RtspServer> rtsp_;
+    std::unique_ptr<AsyncLatencyCsv> latency_csv_;
 
     std::atomic<uint64_t> ai_source_{0}, ai_sampled_{0}, ai_completed_{0};
     std::atomic<uint64_t> packets_sent_{0};

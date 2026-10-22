@@ -33,6 +33,9 @@ struct Config {
     bool ai = true, osd = true;
     // Opt-in because percentile collection adds a small mutex/copy overhead.
     bool latency_stats = false;
+    // Optional per-sample trace. A dedicated writer thread drains a bounded
+    // queue so storage latency never blocks a video or inference thread.
+    std::string latency_csv;
     std::string iq_dir = "/etc/iqfiles";
     std::string model = "objects.rknn", metadata = "objects.json", labels = "labels.png";
 
@@ -93,6 +96,11 @@ inline Config parse_config(int argc, char** argv) {
         else if (key == "--labels") c.labels = value;
         else if (key == "--sub-node") c.sub_node = value;
         else if (key == "--iq-dir") c.iq_dir = value;
+        else if (key == "--latency-csv") {
+            if (value.empty()) throw std::invalid_argument("latency CSV path must not be empty");
+            c.latency_csv = value;
+            c.latency_stats = true;
+        }
         else if (key == "--threshold") {
             size_t end = 0;
             c.threshold = std::stof(value, &end);
@@ -132,6 +140,7 @@ inline void print_usage(std::ostream& out) {
            "  --rtsp-port 8554 --result-ttl-ms 300 --stall-timeout-ms 5000\n"
            "  --iq-dir /etc/iqfiles\n"
            "  --latency-stats (rolling P50/P95/P99/max stage latency)\n"
+           "  --latency-csv /tmp/latency.csv (asynchronous per-sample trace)\n"
            "  --no-ai --no-osd --no-isp --ai-delay-ms 0 --help\n"
            "NV12 dimensions must be even; nodes must share the same FOV.\n"
            "Paths: /live/main_stream and /live/sub_stream\n";

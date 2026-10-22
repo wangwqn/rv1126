@@ -1,10 +1,14 @@
 #include "vision/core.hpp"
 #include "vision/config.hpp"
+#include "vision/latency_trace.hpp"
 
 #include <atomic>
+#include <cstdio>
+#include <fstream>
 #include <future>
 #include <initializer_list>
 #include <iostream>
+#include <iterator>
 #include <limits>
 #include <stdexcept>
 #include <string>
@@ -67,7 +71,7 @@ void test_config_parsing_and_validation() {
                                    "--ai-fps", "6", "--rtsp-port", "9554",
                                    "--sensor-mode", "current",
                                    "--threshold", "0.75", "--no-ai", "--no-osd",
-                                   "--no-isp", "--latency-stats"});
+                                   "--no-isp", "--latency-csv", "/tmp/latency.csv"});
     check(configured.width == 1920 && configured.height == 1080 &&
               configured.output_width() == 1080 && configured.output_height() == 1920,
           "rotation swaps configured output dimensions");
@@ -76,7 +80,7 @@ void test_config_parsing_and_validation() {
               configured.sensor_mode == "current",
           "numeric command-line settings are parsed");
     check(!configured.ai && !configured.osd && configured.iq_dir.empty() &&
-              configured.latency_stats,
+              configured.latency_stats && configured.latency_csv == "/tmp/latency.csv",
           "boolean disable switches are parsed");
 
     expect_invalid([] { parse({"--width", "641"}); },
@@ -93,6 +97,8 @@ void test_config_parsing_and_validation() {
                    "unsupported sensor modes are rejected");
     expect_invalid([] { parse({"--fps"}); },
                    "missing option values are rejected");
+    expect_invalid([] { parse({"--latency-csv", ""}); },
+                   "empty latency CSV path is rejected");
     expect_invalid([] { parse({"--bitrate", "999999999999999999999"}); },
                    "integer overflow is rejected");
 }
@@ -117,6 +123,40 @@ void test_latency_percentiles_and_rolling_window() {
     check(snapshot.samples == 4 && snapshot.window == 3 && snapshot.p50_us == 3 &&
               snapshot.p95_us == 4 && snapshot.max_us == 4,
           "rolling latency window evicts only its oldest sample");
+}
+
+void test_async_latency_csv_drains_on_close() {
+    const auto unique = steady_clock::now().time_since_epoch().count();
+    const std::string path =
+        "/tmp/rv1126-latency-writer-test-" + std::to_string(unique) + ".csv";
+    {
+        vision::AsyncLatencyCsv writer(path, 4096);
+        const auto now = steady_clock::now();
+        for (std::uint64_t index = 0; index < 1000; ++index) {
+            writer.push(index % 2 ? vision::LatencyMetric::ai_infer
+                                  : vision::LatencyMetric::main_server_total,
+                        now + microseconds(index), 1000000 + index, 15000 + index);
+        }
+        writer.close();
+        writer.close();
+        check(writer.written() == 1000 && writer.dropped() == 0 && !writer.failed() &&
+                  writer.queued() == 0 && writer.high_water() > 0,
+              "asynchronous CSV writer drains every queued sample on close");
+    }
+
+    std::ifstream input(path);
+    check(static_cast<bool>(input), "latency CSV can be reopened");
+    std::string contents((std::istreambuf_iterator<char>(input)),
+                         std::istreambuf_iterator<char>());
+    input.close();
+    std::remove(path.c_str());
+    check(contents.find(
+              "observed_monotonic_us,frame_pts_us,stage,latency_us,latency_ms\n") == 0,
+          "latency CSV has a stable schema");
+    check(contents.find("ai.infer") != std::string::npos &&
+              contents.find("main.server_total") != std::string::npos &&
+              std::count(contents.begin(), contents.end(), '\n') == 1001,
+          "latency CSV stores every stage record exactly once");
 }
 
 void test_queue_drop_oldest() {
@@ -372,6 +412,7 @@ int main() {
     try {
         test_config_parsing_and_validation();
         test_latency_percentiles_and_rolling_window();
+        test_async_latency_csv_drains_on_close();
         test_queue_drop_oldest();
         test_close_wakes_waiters();
         test_lossless_queue_backpressure();
