@@ -57,6 +57,9 @@
 - Ubuntu 虚拟机经 VMware NAT 和 Windows 热点 NAT 测 UDP 双流时，约 29 秒后
   RTP 端口映射中断；开发板仍严格 30 FPS。该结果是双 NAT 限制，不是
   摄像头/TNR 丢帧，UDP 须从 Windows 宿主机直连或同二层网络验收。
+- 逐帧解码、墙钟计时的 10 秒 TCP 对照中，ADB 路径主、子均为 300 帧/
+  30.00 FPS；当前 Ubuntu 虚拟机经热点路径主流 293 帧/29.30 FPS 并有
+  H.264 解码错误，子流 300 帧/30.00 FPS。这条 Wi-Fi TCP 路径未通过。
 - 8 Mbps 主流会触发板载旧 `librtsp` TCP 拥塞及码流损坏。TNR 关闭时 6 Mbps
   曾通过 120 秒双路测试并达到约 30 FPS；该结论不能外推到 TNR 开启模式。
 - 按画质要求恢复 TNR 后，5 Mbps 的 60 秒本机 UDP 测试为主流 1732 帧、

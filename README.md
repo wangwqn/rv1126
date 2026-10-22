@@ -13,7 +13,7 @@
 ```bash
 git clone git@github.com:wangwqn/rv1126.git
 cd rv1126
-git checkout v1.3.1
+git checkout v1.3.2
 bash scripts/verify_checkout.sh
 ```
 
@@ -179,6 +179,12 @@ ffplay -rtsp_transport udp -buffer_size 2097152 \
 `-rtsp_transport tcp`。
 不要用“Ubuntu 虚拟机 NAT -> Windows 热点 NAT -> 开发板”做 UDP 验收；
 请在 Windows 宿主机直接播放，或让 Ubuntu 与开发板处在同一个二层网络。
+
+TCP 双流帧率可用项目脚本验收：
+
+```bash
+bash scripts/test_rtsp_tcp.sh 开发板当前IP 60
+```
 
 Windows VLC 经 Wi-Fi：先从 `adb shell ip -4 addr show wlan0` 确认开发板当前地址，
 取消“RTP over RTSP (TCP)”后，再打开 `rtsp://开发板当前IP:8554/live/main_stream`。

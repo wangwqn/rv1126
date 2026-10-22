@@ -50,6 +50,18 @@ bash scripts/test_rtsp_udp.sh <开发板当前IP> 60
 
 ## 4. USB ADB 的 TCP 回退诊断
 
+局域网 TCP 双流帧率验收：
+
+```bash
+bash scripts/test_rtsp_tcp.sh <开发板当前IP> 60
+```
+
+脚本会先等待主流收到视频帧，再建立子流会话，避免旧版 `librtsp`
+同时处理两个 RTSP SETUP 握手时偶发卡住。日志保存在 `/tmp/rv1126_tcp_test/`。
+为避免启动 PTS 跳变干扰，脚本按真实墙钟区间统计解码帧。结束时的
+`exit_code=143` 是脚本到达指定时间后主动停止 ffprobe，不是异常；以最终
+`PASS/FAIL`、帧数和错误扫描为准。
+
 ```bash
 adb forward tcp:8554 tcp:8554
 ffplay -rtsp_transport tcp rtsp://127.0.0.1:8554/live/main_stream
