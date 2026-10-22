@@ -22,7 +22,10 @@ trap 'rm -rf "$log_dir"' EXIT
 
 run_stream() {
   local stream="$1"
-  ffmpeg -hide_banner -loglevel warning -nostats -progress pipe:1 \
+  # -t follows media timestamps and cannot end a stalled receive by itself.
+  # Keep a wall-clock guard so blocked UDP/NAT paths fail instead of hanging.
+  timeout --signal=INT --kill-after=5 "$((duration + 20))" \
+    ffmpeg -hide_banner -loglevel warning -nostats -progress pipe:1 \
     -rtsp_transport udp -buffer_size 2097152 \
     -reorder_queue_size 512 -max_delay 200000 -err_detect explode \
     -i "rtsp://${board_ip}:8554/live/${stream}_stream" \
@@ -39,7 +42,7 @@ main_rc=$?
 wait "$sub_pid"
 sub_rc=$?
 
-failure_pattern='RTP: missed|max delay reached|Invalid data|corrupt|Connection refused|timed out|error while decoding'
+failure_pattern='RTP: missed|max delay reached|Invalid data|Invalid NAL|non-existing PPS|corrupt|Connection refused|timed out|error while decoding'
 failed=0
 for stream in main sub; do
   echo "--- $stream ---"

@@ -190,12 +190,16 @@ Isp::Isp(const Config& c) : camera_(c.camera) {
             // makes this old RKAiq release fail the lookup and print an error
             // on every frame. Do not fabricate a calibration table: bypass LSC
             // until a lens-specific 1920x1080 IQ calibration is available.
-            rk_aiq_lsc_attrib_t lsc{};
-            check_rk(rk_aiq_user_api_alsc_GetAttrib(context, &lsc),
-                     "ISP GetLSCAttrib");
-            lsc.byPass = true;
-            check_rk(rk_aiq_user_api_alsc_SetAttrib(context, lsc),
-                     "ISP SetLSCAttrib");
+            // In this BSP rk_aiq_user_api_alsc_SetAttrib() is compiled as a
+            // no-op (its setAttrib call is commented out). Disable both the
+            // integrated ALSC algorithm and the ISP LSC module through the
+            // working sysctl APIs instead.
+            check_rk(rk_aiq_uapi_sysctl_enableAxlib(
+                         context, RK_AIQ_ALGO_TYPE_ALSC, 0, false),
+                     "ISP DisableALSCAlgo");
+            check_rk(rk_aiq_uapi_sysctl_setModuleCtl(
+                         context, RK_MODULE_LSC, false),
+                     "ISP DisableLSCModule");
             std::fprintf(stderr,
                          "camera: ALSC bypassed: IQ file has no calibrated 1920x1080 table\n");
         }

@@ -13,7 +13,7 @@
 ```bash
 git clone git@github.com:wangwqn/rv1126.git
 cd rv1126
-git checkout v1.3.0
+git checkout v1.3.1
 bash scripts/verify_checkout.sh
 ```
 
@@ -156,8 +156,9 @@ cd /root/rv1126_objects
 主流，因此默认仍为 4 Mbps。旧版在 4K IMX415 输入、TNR 开启时只有约 29.5 FPS，
 且稳态约每秒出现一个 PTS 缺口；降低编码码率不能改善前端吞吐。当前版本改为
 `--sensor-mode 1080p`，在 RKAiq 启动前用 V4L2 subdev API 选择 IMX415 的原生
-1080p@30 RAW12 模式。短测 10 秒时主流 299 帧、子流 300 帧，稳态
-`pts_gap=0`；长期结果仍须按真机验收文档复测。`--sensor-mode 4k` 可恢复旧的
+1080p@30 RAW12 模式。真机连续统计超过 17,000 帧/路时稳态
+`pts_gap=0`，ADB TCP 双流 60 秒各解码 1800 帧；30 分钟/24 小时结果仍须按
+真机验收文档复测。`--sensor-mode 4k` 可恢复旧的
 3864×2192 RAW10 模式，`current` 则保持外部预先配置的模式。
 
 当前板载 IMX415 IQ 文件只有 3840×2160 的 ALSC 镜头阴影标定。1080p 模式不会
@@ -176,6 +177,8 @@ ffplay -rtsp_transport udp -buffer_size 2097152 \
 可用 `bash scripts/test_rtsp_udp.sh 开发板当前IP 60` 同时验收主、子流。ADB forward
 只能转发 TCP，不能用于 RTP/UDP；只有 UDP 被防火墙、NAT 或网络策略阻断时，才回退到
 `-rtsp_transport tcp`。
+不要用“Ubuntu 虚拟机 NAT -> Windows 热点 NAT -> 开发板”做 UDP 验收；
+请在 Windows 宿主机直接播放，或让 Ubuntu 与开发板处在同一个二层网络。
 
 Windows VLC 经 Wi-Fi：先从 `adb shell ip -4 addr show wlan0` 确认开发板当前地址，
 取消“RTP over RTSP (TCP)”后，再打开 `rtsp://开发板当前IP:8554/live/main_stream`。

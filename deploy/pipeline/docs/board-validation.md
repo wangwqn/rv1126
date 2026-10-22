@@ -32,8 +32,14 @@ ALSC：1080p 模式旁路；板载 IQ 文件仅有 3840x2160 镜头阴影标定
 4 Mbps 已按当前画质/带宽取舍设为默认值，但它不能解决 4K TNR 带来的帧率缺口。
 TNR 位于 VENC 和 RTSP 之前；降低 H.264 目标码率只会减轻编码输出和网络带宽，
 不能提高 ISPP/TNR 产帧速度。因此 1.3.0 默认直接选择驱动已有的 1080p@30 模式。
-初步约 10 秒服务端测试为主流 299 帧、子流 300 帧、稳态 `pts_gap=0`；需继续完成
-60 秒双路网络测试及 30 分钟/24 小时稳定性测试后，才能认定长期零丢帧。
+真机在一次主动重启前已连续统计超过 17,000 帧/路，稳态 `pts_gap=0`；
+ADB TCP 双流 60 秒各解码 1800 帧、退出码 0。还需完成 30 分钟/24 小时
+稳定性测试，才能认定长期结果。
+
+2026-10-22 的 `/proc/rkispp0` 证据：输入、scale0 和 scale1 均为
+32–33 ms/帧，delay 约 14–15 ms，TNR 2to1 耗时 2–3 ms，`ErrCnt:0`。
+单主流 ADB 包级抓取 60 秒后，稳态 RTP PTS 没有倒退或大于 1.5 帧周期
+的间隔；旧 `librtsp` 在会话刚加入时仍可发送 1 个 IDR 前旧包。
 
 ## RTP/UDP 传输策略
 
@@ -46,6 +52,11 @@ UDP RTP/RTCP 端口。无额外接收缓冲时主流曾报告一次丢9个 RTP�
 2 MiB socket buffer、512包重排队列和200 ms最大重排等待复测30秒无丢包。
 这说明 UDP消除了发送阻塞，但网络拥塞时可能丢包；因此保留 TCP作为回退方式，
 并保持主流4 Mbps，不因改用 UDP恢复到已知不稳定的8 Mbps。
+
+VMware NAT 内的 Ubuntu 经 Windows 热点再访问开发板是双 NAT。实测
+主、子 UDP 流约 29 秒后同时停止收包，而服务端仍为 30 FPS、
+`pts_gap=0`，因此这条路径不可用作 UDP 性能验收。使用 Windows 宿主机直连
+开发板热点地址，或将 Ubuntu 改为与开发板同二层的桥接网络。
 
 ## 启动
 
@@ -71,10 +82,12 @@ OSD boxes/truncated、RTSP queue_high_water/shutdown_abandoned
 显示 1920×1080 输入；必须保存新的处理间隔和 delay 作为验收证据。当前版本没有
 `--disable-tnr` 参数。
 
-板载 IQ XML 的 ALSC `resolutionAlll` 只有 `3840x2160`。程序在 1080p 模式下会
-主动设置 `byPass=true`，而不是错误复用或缩放 4K 标定表；启动日志应只提示一次，
-不应再出现每帧 `can't find 1920x1080 in lscResName`。旁路避免错误校正，但可能使
-镜头边缘亮度/颜色一致性下降，正式量产需重新标定 IQ。
+板载 IQ XML 的 ALSC `resolutionAlll` 只有 `3840x2160`。程序在 1080p 模式下通过
+sysctl 同时停用 ALSC 算法与 ISP LSC 模块，而不是错误复用或缩放 4K 标定表；不能
+使用此 BSP 中返回成功却不执行设置的 `rk_aiq_user_api_alsc_SetAttrib()`。启动准备
+阶段可能出现少量查表提示，但出帧后不应再逐帧出现 `can't find 1920x1080 in
+lscResName`。旁路避免错误校正，但可能使镜头边缘亮度/颜色一致性下降，正式量产需
+重新标定 IQ。
 
 ## Ubuntu 经局域网 UDP 验证
 
@@ -102,10 +115,10 @@ ffplay -rtsp_transport tcp rtsp://127.0.0.1:8554/live/main_stream
 ## CPU 与内存
 
 BusyBox `top` 默认以单核为 100%，四核 RV1126 上显示 100% 等于整机容量约 25%。
-4 Mbps、TNR 开启、双路本机客户端与 AI 3 FPS 同时运行时，按 `/proc` 总时钟滴答
-测得应用占四核总容量 24.65%，相当于 BusyBox `top` 单核口径约 98.61%；RSS/HWM
-约 119600 kB、33 线程。该口径只统计应用进程；当次整机 busy 为 40.64%，其中还含
-内核、ISP、USB ADB 和网络。CPU/NPU 温度约 78.3/73.8°C。
+1080p TNR、4 Mbps、AI/OSD 与 Wi-Fi TCP 双流同时运行时，10 秒 `/proc`
+采样得到应用占四核总容量 13.57%、整机 busy 21.40%；RSS/HWM 约
+120104 kB、33 线程，CPU/NPU 温度约 56.7/55.2°C。这是短时环境值，
+不能代替指定环温下的长时稳态测量。
 
 短时空载流 A/B 中，TNR 开启相对关闭使应用占比约增加 2.79 个百分点、整机 busy
 约增加 8.03 个百分点，CPU 温度约增加 0.9°C。采样起始温度和 NPU 动态频率并非

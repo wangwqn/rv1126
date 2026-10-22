@@ -44,6 +44,9 @@ bash scripts/test_rtsp_udp.sh <开发板当前IP> 60
 ```
 
 脚本同时解码主流和子流，并检查 `RTP: missed`、H.264 损坏、超时和连接错误。
+脚本的墙钟上限为“指定时长 + 20 秒”，媒体包中断时会失败退出，不会永久等待。
+不要从 VMware NAT 内的 Ubuntu 经 Windows 热点 NAT 验收 UDP；该双 NAT
+链路实测约 29 秒后丢失 RTP 映射。使用 Windows 宿主机直连或桥接网络。
 
 ## 4. USB ADB 的 TCP 回退诊断
 
