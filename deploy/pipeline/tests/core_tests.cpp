@@ -67,7 +67,7 @@ void test_config_parsing_and_validation() {
                                    "--ai-fps", "6", "--rtsp-port", "9554",
                                    "--sensor-mode", "current",
                                    "--threshold", "0.75", "--no-ai", "--no-osd",
-                                   "--no-isp"});
+                                   "--no-isp", "--latency-stats"});
     check(configured.width == 1920 && configured.height == 1080 &&
               configured.output_width() == 1080 && configured.output_height() == 1920,
           "rotation swaps configured output dimensions");
@@ -75,7 +75,8 @@ void test_config_parsing_and_validation() {
               configured.rtsp_port == 9554 && configured.threshold == 0.75f &&
               configured.sensor_mode == "current",
           "numeric command-line settings are parsed");
-    check(!configured.ai && !configured.osd && configured.iq_dir.empty(),
+    check(!configured.ai && !configured.osd && configured.iq_dir.empty() &&
+              configured.latency_stats,
           "boolean disable switches are parsed");
 
     expect_invalid([] { parse({"--width", "641"}); },
@@ -94,6 +95,28 @@ void test_config_parsing_and_validation() {
                    "missing option values are rejected");
     expect_invalid([] { parse({"--bitrate", "999999999999999999999"}); },
                    "integer overflow is rejected");
+}
+
+void test_latency_percentiles_and_rolling_window() {
+    vision::LatencyWindow values(100);
+    for (std::uint64_t milliseconds = 1; milliseconds <= 100; ++milliseconds)
+        values.observe_us(milliseconds * 1000);
+    auto snapshot = values.snapshot();
+    check(snapshot.samples == 100 && snapshot.window == 100,
+          "latency sample and window counts are reported");
+    check(snapshot.p50_us == 50000 && snapshot.p95_us == 95000 &&
+              snapshot.p99_us == 99000 && snapshot.max_us == 100000,
+          "nearest-rank latency percentiles are exact");
+
+    vision::LatencyWindow rolling(3);
+    rolling.observe_us(1);
+    rolling.observe_us(2);
+    rolling.observe_us(3);
+    rolling.observe_us(4);
+    snapshot = rolling.snapshot();
+    check(snapshot.samples == 4 && snapshot.window == 3 && snapshot.p50_us == 3 &&
+              snapshot.p95_us == 4 && snapshot.max_us == 4,
+          "rolling latency window evicts only its oldest sample");
 }
 
 void test_queue_drop_oldest() {
@@ -348,6 +371,7 @@ void test_box_scaling_and_bounds() {
 int main() {
     try {
         test_config_parsing_and_validation();
+        test_latency_percentiles_and_rolling_window();
         test_queue_drop_oldest();
         test_close_wakes_waiters();
         test_lossless_queue_backpressure();

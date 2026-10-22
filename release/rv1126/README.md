@@ -48,6 +48,10 @@ IMX415 1944×1097 RAW12、有效裁剪 1920×1080、30 FPS 模式，TNR 仍由�
 可用 `--sensor-mode 4k` 回退旧模式，当前发布程序没有 `--disable-tnr` 参数。
 8 Mbps 在板载旧版 `librtsp` 上仍是已知不稳定配置。
 
+分段时延诊断可在启动命令后添加 `--latency-stats`。程序每 5 秒报告 AI、OSD、
+主/子编码输出和 RTSP 发送路径的滚动 P50/P95/P99/max；正常运行默认关闭。
+完整指标边界和抓取脚本见 `deploy/pipeline/docs/runtime-latency.md`。
+
 局域网播放默认选择 RTP/UDP，RTSP 控制连接仍使用 TCP 8554。FFplay 示例：
 
 ```bash

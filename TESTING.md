@@ -141,3 +141,16 @@ adb shell 'cat /proc/rkispp0'
 | 端口占用/摄像头打开失败 | 是否同时启动了旧人脸程序或第二个新程序 |
 
 模型和数据来源、训练命令见 README.md，实际验证版本见 STATUS.md。
+
+## 9. 分段时延抓取
+
+先停止正在运行的实例，再从 Ubuntu 仓库根目录执行：
+
+```bash
+bash scripts/capture_runtime_latency.sh 60
+```
+
+脚本使用 `--latency-stats` 运行程序，保存应用 P50/P95/P99/max 和测试前后的
+`/proc/rkispp0` 快照。默认结果目录在 `/tmp`。各指标的准确起止边界和当前真机
+基线见 `deploy/pipeline/docs/runtime-latency.md`；其中 `server_total` 只到板端
+RTSP 发送 API 返回，不是 VLC 显示端到端时延。

@@ -15,6 +15,63 @@
 
 namespace vision {
 
+struct LatencySnapshot {
+    std::uint64_t samples = 0;
+    std::size_t window = 0;
+    std::uint64_t p50_us = 0;
+    std::uint64_t p95_us = 0;
+    std::uint64_t p99_us = 0;
+    std::uint64_t max_us = 0;
+};
+
+// Fixed-memory rolling percentile window. The hot path only appends one
+// integer; sorting happens on the five-second diagnostics path.
+class LatencyWindow {
+public:
+    explicit LatencyWindow(std::size_t capacity = 512) : capacity_(capacity) {
+        if (!capacity_) throw std::invalid_argument("LatencyWindow capacity must be positive");
+    }
+
+    LatencyWindow(const LatencyWindow&) = delete;
+    LatencyWindow& operator=(const LatencyWindow&) = delete;
+
+    void observe_us(std::uint64_t value) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (values_.size() == capacity_) values_.pop_front();
+        values_.push_back(value);
+        ++samples_;
+    }
+
+    LatencySnapshot snapshot() const {
+        std::vector<std::uint64_t> sorted;
+        LatencySnapshot result;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            sorted.assign(values_.begin(), values_.end());
+            result.samples = samples_;
+        }
+        result.window = sorted.size();
+        if (sorted.empty()) return result;
+        std::sort(sorted.begin(), sorted.end());
+        const auto percentile = [&sorted](std::size_t numerator) {
+            // Nearest-rank percentile: ceil(n*q)-1, with q in hundredths.
+            const std::size_t rank = (sorted.size() * numerator + 99) / 100;
+            return sorted[rank ? rank - 1 : 0];
+        };
+        result.p50_us = percentile(50);
+        result.p95_us = percentile(95);
+        result.p99_us = percentile(99);
+        result.max_us = sorted.back();
+        return result;
+    }
+
+private:
+    const std::size_t capacity_;
+    mutable std::mutex mutex_;
+    std::deque<std::uint64_t> values_;
+    std::uint64_t samples_ = 0;
+};
+
 // A producer never waits for a consumer: saturation retires the oldest item.
 // T may be move-only, including an owning hardware-buffer lease. Its destructor
 // and move assignment are always invoked outside the queue's mutex.

@@ -5,8 +5,8 @@
 - 目录：`/root/rv1126_objects`，未覆盖原人脸程序或系统运行库。
 - 权重来源：`runs/objects11_relu2/weights/best.pt`，12 epoch 的训练基线。
 - 模型：`artifacts/objects-rv1126.rknn`，1,899,778 字节。
-- 当前真机候选程序 SHA256：
-  `e835b4cbdbbe3007e363e5d05c1dcda5195b29ff58556e79c5fa0422ad34a2b7`。
+- 当前真机候选程序 SHA256：见 `release/rv1126/SHA256SUMS`；1.4.0 增加了可选的
+  分段时延统计，模型文件未变化。
 - 模型 SHA256：`661285a3c12e43fd58c2e2018adb1d8da5766bbf43601992b3468854b78402b8`。
 - 转换工具：RKNN Toolkit 1.7.5；板端原 runtime 1.7.0 / driver 6.4.6.5.351518 实测可加载。
 - ONNX 检查和 PyTorch/ONNX Runtime 数值对比通过。
@@ -81,6 +81,11 @@
   这些是短时 A/B 趋势，不是稳态功耗瓦数。系统没有电流/功率传感器，实际整机
   功耗需要 USB 串联功率计记录输入电压和电流。
 - `/proc/<pid>/fd` 可见 DMA-BUF 句柄。
+- 1.4.0 的真机分段统计确认 `invalid_pts=0`。512 样本稳态窗口内，AI 总路径
+  P50/P95/P99 为 38.59/40.99/42.28 ms；主流从帧 PTS 到 RTSP 发送 API 返回为
+  35.91/40.46/45.75 ms，子流为 22.76/28.22/34.29 ms。累计超过 75,000
+  帧/路时 `pts_gap=0`、队列高水位 2/8。详细边界见
+  `deploy/pipeline/docs/runtime-latency.md`。
 - 30 分钟/24 小时稳定性和计时器光学对拍仍待执行；在完成 P50/P95/P99 对拍前，
   不宣称端到端低于 200 ms，也不把短测结果表述为长期绝对零丢帧。
 

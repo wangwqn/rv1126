@@ -31,6 +31,8 @@ struct Config {
     int ai_delay_ms = 0;
     float threshold = 0.35f;
     bool ai = true, osd = true;
+    // Opt-in because percentile collection adds a small mutex/copy overhead.
+    bool latency_stats = false;
     std::string iq_dir = "/etc/iqfiles";
     std::string model = "objects.rknn", metadata = "objects.json", labels = "labels.png";
 
@@ -81,6 +83,7 @@ inline Config parse_config(int argc, char** argv) {
         if (key == "--no-ai") { c.ai = false; continue; }
         if (key == "--no-osd") { c.osd = false; continue; }
         if (key == "--no-isp") { c.iq_dir.clear(); continue; }
+        if (key == "--latency-stats") { c.latency_stats = true; continue; }
         if (i + 1 == argc) throw std::invalid_argument("missing value: " + key);
         const std::string value = argv[++i];
         if (key == "--main-node") c.main_node = value;
@@ -128,6 +131,7 @@ inline void print_usage(std::ostream& out) {
            "  --packet-queue 8\n"
            "  --rtsp-port 8554 --result-ttl-ms 300 --stall-timeout-ms 5000\n"
            "  --iq-dir /etc/iqfiles\n"
+           "  --latency-stats (rolling P50/P95/P99/max stage latency)\n"
            "  --no-ai --no-osd --no-isp --ai-delay-ms 0 --help\n"
            "NV12 dimensions must be even; nodes must share the same FOV.\n"
            "Paths: /live/main_stream and /live/sub_stream\n";

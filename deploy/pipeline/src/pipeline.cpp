@@ -8,6 +8,7 @@
 #include <condition_variable>
 #include <exception>
 #include <functional>
+#include <iomanip>
 #include <mutex>
 #include <sstream>
 #include <stdexcept>
@@ -24,9 +25,44 @@ uint64_t elapsed_ms(Clock::time_point start) {
         std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now() - start).count());
 }
 
+uint64_t duration_us(Clock::duration duration) {
+    return static_cast<uint64_t>(
+        std::chrono::duration_cast<std::chrono::microseconds>(duration).count());
+}
+
+bool pts_age_us(uint64_t pts_us, Clock::time_point now, uint64_t& age_us) {
+    if (!pts_us) return false;
+    const auto signed_now =
+        std::chrono::duration_cast<std::chrono::microseconds>(now.time_since_epoch()).count();
+    if (signed_now < 0 || static_cast<uint64_t>(signed_now) < pts_us) return false;
+    age_us = static_cast<uint64_t>(signed_now) - pts_us;
+    // Reject a different timestamp epoch and stale buffers instead of printing
+    // plausible-looking but meaningless multi-minute latency.
+    return age_us <= 60000000u;
+}
+
+std::string format_latency(const char* name, const LatencySnapshot& value) {
+    std::ostringstream out;
+    out << name << '=';
+    if (!value.window) return out.str() + "-";
+    out << std::fixed << std::setprecision(2)
+        << value.p50_us / 1000.0 << '/'
+        << value.p95_us / 1000.0 << '/'
+        << value.p99_us / 1000.0 << '/'
+        << value.max_us / 1000.0
+        << "(n=" << value.window << ",total=" << value.samples << ')';
+    return out.str();
+}
+
+struct AiFrame {
+    Frame frame;
+    Clock::time_point queued_at{};
+};
+
 struct EncodedPacket {
     int stream = 0;
     Frame frame;
+    Clock::time_point ready_at{};
 };
 } // namespace
 
@@ -94,6 +130,10 @@ public:
                 ai_bind_.reset(new Binding(sub_vi_->endpoint(), ai_rga_->endpoint()));
 
             running_.store(true);
+            // VI channels can retain frames while the rest of the hardware
+            // graph and RKNN model are being constructed. Do not let those
+            // cold-start buffers pollute steady-state latency percentiles.
+            latency_start_ = Clock::now() + std::chrono::seconds(3);
             if (config_.ai) {
                 launch("ai-capture", [this] { ai_capture_loop(); });
                 launch("ai", [this] { ai_loop(); });
@@ -145,6 +185,24 @@ public:
             << ", queue_high_water=" << encoded_packets_.high_water()
             << '/' << config_.packet_queue
             << ", shutdown_abandoned=" << encoded_packets_.abandoned() << ')';
+        if (config_.latency_stats) {
+            out << "\nlatency_ms p50/p95/p99/max "
+                << "ai(" << format_latency("rga_age", ai_rga_age_.snapshot()) << ' '
+                << format_latency("queue", ai_queue_.snapshot()) << ' '
+                << format_latency("infer", ai_infer_.snapshot()) << ' '
+                << format_latency("total", ai_total_.snapshot()) << ") "
+                << "osd(" << format_latency("wait", osd_wait_.snapshot()) << ' '
+                << format_latency("update", osd_update_.snapshot()) << ") "
+                << "main(" << format_latency("venc_age", venc_age_[0].snapshot()) << ' '
+                << format_latency("rtsp_wait", rtsp_wait_[0].snapshot()) << ' '
+                << format_latency("send", rtsp_send_[0].snapshot()) << ' '
+                << format_latency("server_total", rtsp_total_[0].snapshot()) << ") "
+                << "sub(" << format_latency("venc_age", venc_age_[1].snapshot()) << ' '
+                << format_latency("rtsp_wait", rtsp_wait_[1].snapshot()) << ' '
+                << format_latency("send", rtsp_send_[1].snapshot()) << ' '
+                << format_latency("server_total", rtsp_total_[1].snapshot()) << ")"
+                << " invalid_pts=" << invalid_latency_pts_.load();
+        }
         return out.str();
     }
 
@@ -208,6 +266,18 @@ private:
         return running_.load();
     }
 
+    bool latency_active(Clock::time_point now) const {
+        return config_.latency_stats && now >= latency_start_;
+    }
+
+    void observe_pts_age(LatencyWindow& window, uint64_t pts,
+                         Clock::time_point now) {
+        if (!latency_active(now)) return;
+        uint64_t age = 0;
+        if (pts_age_us(pts, now, age)) window.observe_us(age);
+        else ++invalid_latency_pts_;
+    }
+
     void ai_capture_loop() {
         auto last_frame = Clock::now();
         int ai_budget = config_.fps - config_.ai_fps;
@@ -218,23 +288,38 @@ private:
                     throw std::runtime_error("AI source stalled");
                 continue;
             }
-            last_frame = Clock::now();
+            const auto ready_at = Clock::now();
+            last_frame = ready_at;
+            observe_pts_age(ai_rga_age_, source->pts(), ready_at);
             ++ai_source_;
             ai_budget += config_.ai_fps;
             if (ai_budget >= config_.fps) {
                 ai_budget -= config_.fps;
                 ++ai_sampled_;
-                if (!ai_frames_.push(std::move(source))) return;
+                AiFrame sampled;
+                sampled.frame = std::move(source);
+                sampled.queued_at = Clock::now();
+                if (!ai_frames_.push(std::move(sampled))) return;
             }
         }
     }
 
     void ai_loop() {
-        Frame source;
+        AiFrame source;
         while (running_.load()) {
             if (!ai_frames_.pop(source, std::chrono::milliseconds(100))) continue;
+            const auto dequeued_at = Clock::now();
+            if (latency_active(dequeued_at) && source.queued_at != Clock::time_point{})
+                ai_queue_.observe_us(duration_us(dequeued_at - source.queued_at));
             if (!interruptible_delay(config_.ai_delay_ms)) return;
-            detections_.publish(detector_->infer(source));
+            const auto infer_start = Clock::now();
+            auto detection = detector_->infer(source.frame);
+            const auto infer_end = Clock::now();
+            detection.completed_at = infer_end;
+            if (latency_active(infer_end))
+                ai_infer_.observe_us(duration_us(infer_end - infer_start));
+            observe_pts_age(ai_total_, detection.pts_us, infer_end);
+            detections_.publish(std::move(detection));
             ++ai_completed_;
         }
     }
@@ -249,7 +334,13 @@ private:
             if (result && (!applied || result->pts_us != applied_pts)) {
                 auto boxes = scale_boxes(*result, config_.output_width(),
                                          config_.output_height());
+                const auto update_start = Clock::now();
+                if (latency_active(update_start) && update_start >= result->completed_at)
+                    osd_wait_.observe_us(duration_us(update_start - result->completed_at));
                 const std::size_t displayed = compositor_->update(boxes);
+                const auto update_end = Clock::now();
+                if (latency_active(update_end))
+                    osd_update_.observe_us(duration_us(update_end - update_start));
                 overlay_boxes_.store(displayed);
                 if (boxes.size() > displayed)
                     overlay_truncated_.fetch_add(boxes.size() - displayed);
@@ -298,11 +389,14 @@ private:
                     throw std::runtime_error("encoder output stalled");
                 continue;
             }
-            last_packet = Clock::now();
+            const auto ready_at = Clock::now();
+            last_packet = ready_at;
+            observe_pts_age(venc_age_[stream], packet->pts(), ready_at);
             if (account_pts(stream, packet->pts())) ++venc_frames_[stream];
             EncodedPacket encoded;
             encoded.stream = stream;
             encoded.frame = std::move(packet);
+            encoded.ready_at = ready_at;
             if (!encoded_packets_.push(std::move(encoded))) return;
         }
     }
@@ -311,7 +405,16 @@ private:
         EncodedPacket packet;
         while (running_.load()) {
             if (encoded_packets_.pop(packet, std::chrono::milliseconds(10))) {
+                const auto send_start = Clock::now();
+                if (latency_active(send_start) && packet.ready_at != Clock::time_point{})
+                    rtsp_wait_[packet.stream].observe_us(
+                        duration_us(send_start - packet.ready_at));
                 rtsp_->send(packet.stream, packet.frame);
+                const auto send_end = Clock::now();
+                if (latency_active(send_end))
+                    rtsp_send_[packet.stream].observe_us(
+                        duration_us(send_end - send_start));
+                observe_pts_age(rtsp_total_[packet.stream], packet.frame->pts(), send_end);
                 ++packets_sent_;
                 packet.frame.reset();
             }
@@ -325,7 +428,7 @@ private:
     bool started_ = false, stopped_ = false;
     std::atomic<bool> running_{false}, failed_{false};
     std::string error_;
-    LatestQueue<Frame> ai_frames_;
+    LatestQueue<AiFrame> ai_frames_;
     BlockingQueue<EncodedPacket> encoded_packets_;
     DetectionCache detections_{8};
     std::vector<std::thread> threads_;
@@ -348,6 +451,11 @@ private:
     std::atomic<uint64_t> pts_gaps_[2]{{0}, {0}};
     std::atomic<uint64_t> pts_resets_[2]{{0}, {0}};
     std::atomic<uint64_t> overlay_boxes_{0}, overlay_truncated_{0};
+    Clock::time_point latency_start_{};
+    LatencyWindow ai_rga_age_, ai_queue_, ai_infer_, ai_total_;
+    LatencyWindow osd_wait_, osd_update_;
+    LatencyWindow venc_age_[2], rtsp_wait_[2], rtsp_send_[2], rtsp_total_[2];
+    std::atomic<uint64_t> invalid_latency_pts_{0};
 };
 
 Pipeline::Pipeline(Config config) : impl_(new Impl(std::move(config))) {}

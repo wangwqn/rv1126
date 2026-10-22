@@ -152,3 +152,13 @@ ffplay -fflags nobuffer -flags low_delay -framedrop \
 至少记录 100 次并统计 P50/P95/P99。当前尚未完成这项光学对拍，因此不能声称
 端到端已经低于 200 ms。
 
+板端内部的分段测量使用：
+
+```bash
+./rkmedia_object_detection_rtsp --rotation 270 --threshold 0.35 --latency-stats
+```
+
+它报告 AI、OSD、编码输出和 RTSP 发送 API 的滚动 P50/P95/P99/max，但不包含
+客户端网络接收、解码、缓存与显示。详细指标边界、一键抓取脚本及 1.4.0 真机结果见
+`runtime-latency.md`。
+
