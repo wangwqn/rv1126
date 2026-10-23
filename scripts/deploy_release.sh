@@ -37,7 +37,10 @@ if (( restart )); then
   adb shell '/root/rv1126_objects/rv1126-object restart'
   healthy=0
   for attempt in $(seq 1 10); do
-    if adb shell '/root/rv1126_objects/rv1126-object health'; then
+    health_output=$(adb shell '/root/rv1126_objects/rv1126-object health' 2>&1 |
+      tr -d '\r') || true
+    printf '%s\n' "$health_output"
+    if grep -q '^Healthy:' <<<"$health_output"; then
       healthy=1
       break
     fi

@@ -1,5 +1,6 @@
 #include "vision/core.hpp"
 #include "vision/config.hpp"
+#include "vision/audio.hpp"
 #include "vision/latency_trace.hpp"
 
 #include <atomic>
@@ -62,7 +63,8 @@ void test_config_parsing_and_validation() {
     const auto defaults = parse({});
     check(defaults.fps == 30 && defaults.ai_fps == 3 &&
               defaults.bitrate == 4000000 && defaults.sub_bitrate == 600000 &&
-              defaults.sensor_mode == "1080p",
+              defaults.sensor_mode == "1080p" && defaults.audio &&
+              defaults.audio_device == "plughw:0,0" && defaults.audio_period_ms == 20,
           "board-validated low-latency defaults are preserved");
 
     const auto configured = parse({"--width", "1920", "--height", "1080",
@@ -70,16 +72,20 @@ void test_config_parsing_and_validation() {
                                    "--rotation", "90", "--fps", "30",
                                    "--ai-fps", "6", "--rtsp-port", "9554",
                                    "--sensor-mode", "current",
+                                   "--audio-source", "hands-free",
+                                   "--audio-period-ms", "40",
                                    "--threshold", "0.75", "--no-ai", "--no-osd",
-                                   "--no-isp", "--latency-csv", "/tmp/latency.csv"});
+                                   "--no-audio", "--no-isp",
+                                   "--latency-csv", "/tmp/latency.csv"});
     check(configured.width == 1920 && configured.height == 1080 &&
               configured.output_width() == 1080 && configured.output_height() == 1920,
           "rotation swaps configured output dimensions");
     check(configured.fps == 30 && configured.ai_fps == 6 &&
               configured.rtsp_port == 9554 && configured.threshold == 0.75f &&
-              configured.sensor_mode == "current",
+              configured.sensor_mode == "current" &&
+              configured.audio_source == "hands-free" && configured.audio_period_ms == 40,
           "numeric command-line settings are parsed");
-    check(!configured.ai && !configured.osd && configured.iq_dir.empty() &&
+    check(!configured.ai && !configured.osd && !configured.audio && configured.iq_dir.empty() &&
               configured.latency_stats && configured.latency_csv == "/tmp/latency.csv",
           "boolean disable switches are parsed");
 
@@ -99,8 +105,28 @@ void test_config_parsing_and_validation() {
                    "missing option values are rejected");
     expect_invalid([] { parse({"--latency-csv", ""}); },
                    "empty latency CSV path is rejected");
+    expect_invalid([] { parse({"--audio-source", "bluetooth"}); },
+                   "unsupported audio source is rejected");
+    expect_invalid([] { parse({"--audio-period-ms", "7"}); },
+                   "too-small PCMA packets are rejected");
     expect_invalid([] { parse({"--bitrate", "999999999999999999999"}); },
                    "integer overflow is rejected");
+}
+
+void test_g711a_encoding_and_downmix() {
+    check(vision::linear_to_alaw(0) == 0xd5 &&
+              vision::linear_to_alaw(-1) == 0x55 &&
+              vision::linear_to_alaw(1000) == 0xfa &&
+              vision::linear_to_alaw(-1000) == 0x7a &&
+              vision::linear_to_alaw(32767) == 0xaa &&
+              vision::linear_to_alaw(-32768) == 0x2a,
+          "G.711A matches reference code words");
+    const std::int16_t stereo[] = {1000, 1000, 2000, 0, -1000, -1000};
+    std::vector<std::uint8_t> encoded;
+    vision::encode_g711a_mono(stereo, 3, 2, encoded);
+    check(encoded.size() == 3 && encoded[0] == 0xfa && encoded[1] == 0xfa &&
+              encoded[2] == 0x7a,
+          "stereo PCM is averaged to mono before G.711A encoding");
 }
 
 void test_latency_percentiles_and_rolling_window() {
@@ -447,6 +473,7 @@ void test_box_scaling_and_bounds() {
 int main() {
     try {
         test_config_parsing_and_validation();
+        test_g711a_encoding_and_downmix();
         test_latency_percentiles_and_rolling_window();
         test_async_latency_csv_drains_on_close();
         test_queue_drop_oldest();

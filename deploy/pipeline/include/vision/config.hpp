@@ -25,6 +25,14 @@ struct Config {
     int bitrate = 4000000, sub_bitrate = 600000;
     int pool_buffers = 8;
     int packet_queue = 8;
+    // The bundled librtsp supports PCMA/PCMU but not AAC. Capture stereo PCM
+    // through ALSA, downmix to mono, and publish standards-compatible PCMA.
+    bool audio = true;
+    std::string audio_device = "plughw:0,0";
+    std::string audio_mixer = "hw:0";
+    std::string audio_source = "main";
+    int audio_input_channels = 2;
+    int audio_period_ms = 20;
     int rtsp_port = 8554;
     int result_ttl_ms = 300;
     int stall_timeout_ms = 5000;
@@ -59,6 +67,12 @@ struct Config {
             throw std::invalid_argument("pool-buffers must be in [4,16]");
         if (packet_queue < 4 || packet_queue > 256)
             throw std::invalid_argument("packet-queue must be in [4,256]");
+        if (audio && (audio_device.empty() || audio_mixer.empty() ||
+                      (audio_source != "main" && audio_source != "hands-free" &&
+                       audio_source != "current") ||
+                      audio_input_channels < 1 || audio_input_channels > 8 ||
+                      audio_period_ms < 10 || audio_period_ms > 100))
+            throw std::invalid_argument("invalid ALSA device, source, channels or packet duration");
         if (bitrate < 10000 || sub_bitrate < 10000 || rtsp_port < 1 || rtsp_port > 65535 ||
             result_ttl_ms < 1 || result_ttl_ms > 10000 || stall_timeout_ms < 1000 ||
             stall_timeout_ms > 60000 || ai_delay_ms < 0 || ai_delay_ms > 5000 ||
@@ -85,6 +99,7 @@ inline Config parse_config(int argc, char** argv) {
         const std::string key = argv[i];
         if (key == "--no-ai") { c.ai = false; continue; }
         if (key == "--no-osd") { c.osd = false; continue; }
+        if (key == "--no-audio") { c.audio = false; continue; }
         if (key == "--no-isp") { c.iq_dir.clear(); continue; }
         if (key == "--latency-stats") { c.latency_stats = true; continue; }
         if (i + 1 == argc) throw std::invalid_argument("missing value: " + key);
@@ -96,6 +111,9 @@ inline Config parse_config(int argc, char** argv) {
         else if (key == "--labels") c.labels = value;
         else if (key == "--sub-node") c.sub_node = value;
         else if (key == "--iq-dir") c.iq_dir = value;
+        else if (key == "--audio-device") c.audio_device = value;
+        else if (key == "--audio-mixer") c.audio_mixer = value;
+        else if (key == "--audio-source") c.audio_source = value;
         else if (key == "--latency-csv") {
             if (value.empty()) throw std::invalid_argument("latency CSV path must not be empty");
             c.latency_csv = value;
@@ -118,6 +136,8 @@ inline Config parse_config(int argc, char** argv) {
         else if (key == "--sub-bitrate") c.sub_bitrate = parse_integer(value);
         else if (key == "--pool-buffers") c.pool_buffers = parse_integer(value);
         else if (key == "--packet-queue") c.packet_queue = parse_integer(value);
+        else if (key == "--audio-input-channels") c.audio_input_channels = parse_integer(value);
+        else if (key == "--audio-period-ms") c.audio_period_ms = parse_integer(value);
         else if (key == "--rtsp-port") c.rtsp_port = parse_integer(value);
         else if (key == "--result-ttl-ms") c.result_ttl_ms = parse_integer(value);
         else if (key == "--stall-timeout-ms") c.stall_timeout_ms = parse_integer(value);
@@ -129,7 +149,7 @@ inline Config parse_config(int argc, char** argv) {
 }
 
 inline void print_usage(std::ostream& out) {
-    out << "RKMedia RV1126 object detection (H.264 RTSP, Chinese labels on main stream)\n"
+    out << "RKMedia RV1126 object detection (H.264 + G.711A RTSP, main-stream labels)\n"
            "  --model objects.rknn --metadata objects.json --labels labels.png\n"
            "  --sensor-mode 1080p|4k|current (default: 1080p RAW12)\n"
            "  --main-node rkispp_scale0 --sub-node rkispp_scale1 --camera 0\n"
@@ -137,11 +157,14 @@ inline void print_usage(std::ostream& out) {
            "  --rotation 0 --fps 30 --ai-fps 3 --threshold 0.35\n"
            "  --bitrate 4000000 --sub-bitrate 600000 --pool-buffers 8\n"
            "  --packet-queue 8\n"
+           "  --audio-device plughw:0,0 --audio-mixer hw:0\n"
+           "  --audio-source main|hands-free|current --audio-input-channels 2\n"
+           "  --audio-period-ms 20 (8 kHz mono G.711A/PCMA output)\n"
            "  --rtsp-port 8554 --result-ttl-ms 300 --stall-timeout-ms 5000\n"
            "  --iq-dir /etc/iqfiles\n"
            "  --latency-stats (rolling P50/P95/P99/max stage latency)\n"
            "  --latency-csv /tmp/latency.csv (asynchronous per-sample trace)\n"
-           "  --no-ai --no-osd --no-isp --ai-delay-ms 0 --help\n"
+           "  --no-ai --no-osd --no-audio --no-isp --ai-delay-ms 0 --help\n"
            "NV12 dimensions must be even; nodes must share the same FOV.\n"
            "Paths: /live/main_stream and /live/sub_stream\n";
 }

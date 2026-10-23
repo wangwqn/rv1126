@@ -94,6 +94,7 @@ rk_find_required_path(RKMEDIA_INCLUDE_DIR rkmedia_api.h "RKMedia" ${RK_SDK_INCLU
 rk_find_required_path(RGA_INCLUDE_DIR im2d.h "RGA im2d" ${RK_SDK_INCLUDE_HINTS})
 rk_find_required_library(EASYMEDIA_LIBRARY easymedia "RKMedia/easymedia")
 rk_find_required_library(RGA_LIBRARY rga "RGA")
+rk_find_required_library(ALSA_LIBRARY asound "ALSA")
 
 set(RK_ISP_INCLUDE_DIRS)
 set(RK_ISP_LIBRARIES)
@@ -162,6 +163,7 @@ target_link_libraries(rkmedia_rockx_face_detection_rtsp PRIVATE
     "${RK_RTSP_LIBRARY}"
     "${EASYMEDIA_LIBRARY}"
     "${RGA_LIBRARY}"
+    "${ALSA_LIBRARY}"
     ${RK_ISP_LIBRARIES}
     Threads::Threads
     ${CMAKE_DL_LIBS})

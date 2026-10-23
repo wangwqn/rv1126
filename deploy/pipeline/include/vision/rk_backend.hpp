@@ -5,7 +5,10 @@
 #include "rkmedia_api.h"
 #include "objects.hpp"
 #include "librtsp/rtsp_demo.h"
+#include <atomic>
 #include <array>
+#include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <vector>
 
@@ -112,12 +115,30 @@ private:
     object_detection::Model model_;
 };
 
+class AlsaCapture : Noncopyable {
+public:
+    static constexpr unsigned sample_rate = 8000;
+    explicit AlsaCapture(const Config& config);
+    ~AlsaCapture();
+    std::size_t read_frames(std::int16_t* interleaved, std::size_t frames,
+                            int timeout_ms);
+    unsigned channels() const { return channels_; }
+    std::size_t frames_per_packet() const { return frames_per_packet_; }
+    std::uint64_t recoveries() const { return recoveries_.load(); }
+private:
+    void* pcm_ = nullptr;
+    unsigned channels_ = 0;
+    std::size_t frames_per_packet_ = 0;
+    std::atomic<std::uint64_t> recoveries_{0};
+};
+
 // This object is serviced exclusively by one RTSP worker.
 class RtspServer : Noncopyable {
 public:
-    explicit RtspServer(int port);
+    RtspServer(int port, bool audio);
     ~RtspServer();
     void send(int stream, const Frame& packet);
+    void send_audio(const std::vector<std::uint8_t>& packet, std::uint64_t pts_us);
     void poll();
 private:
     rtsp_demo_handle server_ = nullptr;

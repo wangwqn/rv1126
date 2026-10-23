@@ -1,5 +1,6 @@
 #include "vision/pipeline.hpp"
 
+#include "vision/audio.hpp"
 #include "vision/core.hpp"
 #include "vision/latency_trace.hpp"
 #include "vision/rk_backend.hpp"
@@ -29,6 +30,12 @@ uint64_t elapsed_ms(Clock::time_point start) {
 uint64_t duration_us(Clock::duration duration) {
     return static_cast<uint64_t>(
         std::chrono::duration_cast<std::chrono::microseconds>(duration).count());
+}
+
+uint64_t monotonic_us(Clock::time_point value) {
+    return static_cast<uint64_t>(
+        std::chrono::duration_cast<std::chrono::microseconds>(
+            value.time_since_epoch()).count());
 }
 
 bool pts_age_us(uint64_t pts_us, Clock::time_point now, uint64_t& age_us) {
@@ -65,13 +72,20 @@ struct EncodedPacket {
     Frame frame;
     Clock::time_point ready_at{};
 };
+
+struct AudioPacket {
+    std::vector<std::uint8_t> data;
+    std::uint64_t pts_us = 0;
+    Clock::time_point ready_at{};
+};
 } // namespace
 
 class Pipeline::Impl {
 public:
     explicit Impl(Config config)
         : config_(std::move(config)), ai_frames_(1),
-          encoded_packets_(static_cast<std::size_t>(config_.packet_queue)) {
+          encoded_packets_(static_cast<std::size_t>(config_.packet_queue)),
+          audio_packets_(16) {
         if (!config_.latency_csv.empty()) config_.latency_stats = true;
         config_.validate();
     }
@@ -85,7 +99,7 @@ public:
         try {
             if (!config_.latency_csv.empty())
                 latency_csv_.reset(new AsyncLatencyCsv(config_.latency_csv));
-            rtsp_.reset(new RtspServer(config_.rtsp_port));
+            rtsp_.reset(new RtspServer(config_.rtsp_port, config_.audio));
             isp_.reset(new Isp(config_));
             media_.reset(new MediaSystem());
             main_vi_.reset(new ViChannel(config_.camera, 0, config_.main_node,
@@ -133,6 +147,10 @@ public:
             if (config_.ai)
                 ai_bind_.reset(new Binding(sub_vi_->endpoint(), ai_rga_->endpoint()));
 
+            // Open/start ALSA only after the expensive ISP and RKNN setup so
+            // the capture ring cannot overrun before its consumer exists.
+            if (config_.audio) audio_capture_.reset(new AlsaCapture(config_));
+
             running_.store(true);
             // VI channels can retain frames while the rest of the hardware
             // graph and RKNN model are being constructed. Do not let those
@@ -145,6 +163,7 @@ public:
             if (config_.ai && config_.osd) launch("rga-overlay", [this] { overlay_loop(); });
             launch("main-venc", [this] { venc_loop(0); });
             launch("sub-venc", [this] { venc_loop(1); });
+            if (config_.audio) launch("alsa-audio", [this] { audio_loop(); });
             launch("rtsp", [this] { rtsp_loop(); });
         } catch (...) {
             running_.store(false);
@@ -191,6 +210,16 @@ public:
             << ", queue_high_water=" << encoded_packets_.high_water()
             << '/' << config_.packet_queue
             << ", shutdown_abandoned=" << encoded_packets_.abandoned() << ')';
+        if (config_.audio) {
+            out << " audio(captured=" << audio_captured_.load()
+                << ", sent=" << audio_sent_.load()
+                << ", queue_drop=" << audio_packets_.dropped()
+                << ", recoveries="
+                << (audio_capture_ ? audio_capture_->recoveries() : audio_recoveries_.load())
+                << ')';
+        } else {
+            out << " audio=off";
+        }
         if (config_.latency_stats) {
             out << "\nlatency_ms p50/p95/p99/max "
                 << "ai(" << format_latency("rga_age", ai_rga_age_.snapshot()) << ' '
@@ -243,6 +272,7 @@ private:
     void close_queues() noexcept {
         ai_frames_.close();
         encoded_packets_.close();
+        audio_packets_.close();
         detections_.close();
     }
 
@@ -260,6 +290,8 @@ private:
         sub_bind_.reset();
         main_bind_.reset();
         compositor_.reset();
+        if (audio_capture_) audio_recoveries_.store(audio_capture_->recoveries());
+        audio_capture_.reset();
         rtsp_.reset();
         sub_venc_bind_.reset();
         main_venc_bind_.reset();
@@ -450,8 +482,59 @@ private:
         }
     }
 
+    void audio_loop() {
+        const std::size_t packet_frames = audio_capture_->frames_per_packet();
+        const unsigned channels = audio_capture_->channels();
+        const std::uint64_t packet_duration_us =
+            packet_frames * 1000000u / AlsaCapture::sample_rate;
+        std::vector<std::int16_t> pcm(packet_frames * channels);
+        std::size_t collected = 0;
+        std::uint64_t next_pts_us = 0;
+        std::uint64_t recoveries = audio_capture_->recoveries();
+        auto last_samples = Clock::now();
+
+        while (running_.load()) {
+            const std::size_t received = audio_capture_->read_frames(
+                pcm.data() + collected * channels,
+                packet_frames - collected, 100);
+            const std::uint64_t current_recoveries = audio_capture_->recoveries();
+            if (current_recoveries != recoveries) {
+                recoveries = current_recoveries;
+                collected = 0;
+                next_pts_us = 0;
+                last_samples = Clock::now();
+                continue;
+            }
+            if (!received) {
+                if (elapsed_ms(last_samples) >
+                    static_cast<std::uint64_t>(config_.stall_timeout_ms))
+                    throw std::runtime_error("ALSA capture stalled");
+                continue;
+            }
+            last_samples = Clock::now();
+            collected += received;
+            if (collected < packet_frames) continue;
+
+            const auto ready_at = Clock::now();
+            const std::uint64_t observed_pts = monotonic_us(ready_at) - packet_duration_us;
+            if (!next_pts_us || observed_pts > next_pts_us + 100000u ||
+                next_pts_us > observed_pts + 100000u)
+                next_pts_us = observed_pts;
+
+            AudioPacket packet;
+            encode_g711a_mono(pcm.data(), packet_frames, channels, packet.data);
+            packet.pts_us = next_pts_us;
+            packet.ready_at = ready_at;
+            next_pts_us += packet_duration_us;
+            collected = 0;
+            ++audio_captured_;
+            if (!audio_packets_.push(std::move(packet))) return;
+        }
+    }
+
     void rtsp_loop() {
         EncodedPacket packet;
+        AudioPacket audio;
         while (running_.load()) {
             if (encoded_packets_.pop(packet, std::chrono::milliseconds(10))) {
                 const auto send_start = Clock::now();
@@ -473,6 +556,11 @@ private:
                 ++packets_sent_;
                 packet.frame.reset();
             }
+            if (audio_packets_.pop(audio, std::chrono::milliseconds(0))) {
+                rtsp_->send_audio(audio.data, audio.pts_us);
+                ++audio_sent_;
+                audio.data.clear();
+            }
             rtsp_->poll();
         }
     }
@@ -485,6 +573,7 @@ private:
     std::string error_;
     LatestQueue<AiFrame> ai_frames_;
     BlockingQueue<EncodedPacket> encoded_packets_;
+    LatestQueue<AudioPacket> audio_packets_;
     DetectionCache detections_{8};
     std::vector<std::thread> threads_;
 
@@ -497,11 +586,13 @@ private:
     std::unique_ptr<VencChannel> main_venc_, sub_venc_;
     std::unique_ptr<HardwareCompositor> compositor_;
     std::unique_ptr<ObjectDetector> detector_;
+    std::unique_ptr<AlsaCapture> audio_capture_;
     std::unique_ptr<RtspServer> rtsp_;
     std::unique_ptr<AsyncLatencyCsv> latency_csv_;
 
     std::atomic<uint64_t> ai_source_{0}, ai_sampled_{0}, ai_completed_{0};
     std::atomic<uint64_t> packets_sent_{0};
+    std::atomic<uint64_t> audio_captured_{0}, audio_sent_{0}, audio_recoveries_{0};
     std::atomic<uint64_t> venc_frames_[2]{{0}, {0}};
     std::atomic<uint64_t> last_pts_[2]{{0}, {0}};
     std::atomic<uint64_t> pts_gaps_[2]{{0}, {0}};

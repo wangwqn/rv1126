@@ -13,7 +13,7 @@
 ```bash
 git clone git@github.com:wangwqn/rv1126.git
 cd rv1126
-git checkout v1.7.0
+git checkout v1.8.0
 bash scripts/verify_checkout.sh
 ```
 
@@ -37,7 +37,7 @@ adb shell '/root/rv1126_objects/rv1126-object status'
 adb shell '/root/rv1126_objects/rv1126-object health'
 ```
 
-预编译程序依赖当前板载 RKMedia、RGA、RKNN、RKAiq 和 C/C++ 运行库 ABI；不同 BSP
+预编译程序依赖当前板载 RKMedia、RGA、RKNN、RKAiq、ALSA 和 C/C++ 运行库 ABI；不同 BSP
 必须按本文后面的交叉编译步骤重新生成。发布包详情见 `release/rv1126/README.md`。
 
 ## 检测类别与名称显示
@@ -57,6 +57,11 @@ adb shell '/root/rv1126_objects/rv1126-object health'
 AI 结果更新时生成小型透明 ARGB 标签条，再由 RGA 与三条硬件边组成标注框。
 RV1126 旧 RGA API 只有 8 个区域，因此实时显示最多 2 个带名称框，更多结果计入
 `osd.truncated`；检测本身仍保留完整结果。
+
+音频默认由独立 ALSA 线程从 `plughw:0,0` 采集 PCM S16LE 8 kHz 双声道，
+下混成单声道并以 20 ms 为单位编码为 G.711A/PCMA。主流和子流都包含同一条
+8 kHz 单声道音轨。音频与视频 PTS 使用同一单调时钟；可用 `--no-audio` 关闭，
+或用 `--audio-source hands-free` 选择耳麦输入。
 
 ## 当前数据与模型定位
 
@@ -163,7 +168,7 @@ adb shell '/root/rv1126_objects/rv1126-object stop'
 ```
 
 `health` 在默认 3 秒窗口内确认主/子 ISPP 帧计数继续增长，同时检查
-进程、RTSP 8554 监听、`ErrCnt=0` 和 TNR ON。需要恢复到上一次已验证部署时：
+音频采集计数、进程、RTSP 8554 监听、`ErrCnt=0` 和 TNR ON。需要恢复到上一次已验证部署时：
 
 ```bash
 bash scripts/rollback_device.sh
@@ -220,6 +225,12 @@ TCP 双流帧率可用项目脚本验收：
 bash scripts/test_rtsp_tcp.sh 开发板当前IP 60
 ```
 
+验收主、子流 H.264 与 PCMA 音轨，并实际解码声音：
+
+```bash
+bash scripts/test_rtsp_av.sh 开发板当前IP 10
+```
+
 Windows VLC 经 Wi-Fi：先从 `adb shell ip -4 addr show wlan0` 确认开发板当前地址，
 取消“RTP over RTSP (TCP)”后，再打开 `rtsp://开发板当前IP:8554/live/main_stream`。
 无 wlan0 地址时先恢复网络，不要沿用旧的 DHCP 地址。`127.0.0.1` 只属于做了 ADB 转发的电脑。
@@ -232,6 +243,8 @@ Windows VLC 经 Wi-Fi：先从 `adb shell ip -4 addr show wlan0` 确认开发板
 - OSD 线程只更新 RGA 区域元数据和小型 ARGB 标签；标签保留四代存储，避免异步 RGA 引用失效。
 - 类别编号和得分随检测结果、时间戳一起缓存，`scale_boxes` 保留类别编号；过期结果不再画框。
 - 两个 VENC 使用独立取码线程和容量 8 的无丢弃阻塞队列；只有 AI 队列会淘汰过期帧。
+- ALSA 使用独立采集线程；20 ms PCM 分包编码为 PCMA 后进入容量 16 的最新包队列，
+  慢客户端不会反压声卡，丢弃时保留 PTS 缺口而不伪造连续音频。
 
 程序每 5 秒输出 `main/sub pts_gap`、启动时钟重置 `pts_reset`、AI 采样与淘汰、
 OSD 截断和 RTSP 队列高水位。

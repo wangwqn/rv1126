@@ -71,7 +71,19 @@ ADB forward 只转发 TCP，不能承载协商出的 RTP/UDP 端口。该命令�
 隔离诊断；如果它正常而 Windows UDP 失败，优先排查热点、路由和 Windows 防火墙。
 Windows 上不能直接使用 Ubuntu 的 127.0.0.1 转发地址。
 
-## 5. 检测功能
+## 5. 音视频轨道验收
+
+主、子流都应包含 H.264 视频和 8 kHz 单声道 G.711A/PCMA 音频：
+
+```bash
+bash scripts/test_rtsp_av.sh <开发板当前IP> 10
+```
+
+脚本会检查两条 Session 的 SDP，实际解码主流视频和音频，并确认音频样本不是静音。
+运行日志中的 `audio(captured/sent)` 应以约 50 包/秒增长，正常情况下
+`queue_drop=0`、`recoveries=0`。只测试视频时可添加 `--no-audio`。
+
+## 6. 检测功能
 
 依次放入手机、杯子、瓶子、书籍、鼠标、键盘、笔记本电脑、显示器、香蕉、苹果、橙子。
 每次先只放一个，靠近镜头且完整可见，光照充足。然后测试多目标、遮挡、远近和背景变化。
@@ -80,7 +92,7 @@ Windows 上不能直接使用 Ubuntu 的 127.0.0.1 转发地址。
 现版本置信度阈值 0.35；不要把降低阈值后出现更多框当成精度提高。
 当前已观察到杯子/瓶子混淆，书籍和部分水果较弱，需继续训练改进。
 
-## 6. 单张图片隔离测试
+## 7. 单张图片隔离测试
 
 最好先停止视频后测延时，避免并发竞争影响结果。
 开发板已存放测试图，执行：
@@ -92,7 +104,7 @@ adb pull /root/rv1126_objects/test-result.jpg ./test-result.jpg
 
 预期能看到笔记本电脑、鼠标、键盘的中文框图。本次已有结果在 `artifacts/device-initial-result.jpg`。
 
-## 7. 需要手动重启时
+## 8. 需要手动重启时
 
 发布包已包含板端管理脚本，它会同时校验 PID 文件和 `/proc/<pid>/cmdline`，
 避免 PID 复用时误停其他进程：
@@ -120,7 +132,8 @@ cd /root/rv1126_objects
   --sensor-mode 1080p \
   --width 1920 --height 1080 --sub-width 640 --sub-height 360 \
   --fps 30 --ai-fps 3 --bitrate 4000000 --sub-bitrate 600000 \
-  --pool-buffers 8 --packet-queue 8 --rotation 270 --threshold 0.35
+  --pool-buffers 8 --packet-queue 8 --rotation 270 --threshold 0.35 \
+  --audio-device plughw:0,0 --audio-source main --audio-period-ms 20
 ```
 
 保持这个终端运行；退出按 Ctrl+C。不要使用 --no-ai 或 --no-osd。
@@ -154,7 +167,7 @@ bash scripts/rollback_device.sh
 任何备份缺失或校验失败都会拒绝停止当前服务。文件交换后还会重启服务并
 重试健康检查，确认视频管线恢复。
 
-## 8. 故障定位
+## 9. 故障定位
 
 | 现象 | 首先检查 |
 | --- | --- |
@@ -162,13 +175,14 @@ bash scripts/rollback_device.sh
 | TCP 可播、UDP 不通 | 客户端是否直连板端 IP、Windows 防火墙、热点是否过滤 UDP |
 | UDP 偶发花屏 | 检查 `RTP: missed`；增大接收缓冲或降到 5/4 Mbps，必要时回退 TCP |
 | 有视频但没标注 | 是否播放 main_stream，是否禁用 AI/OSD，物体是否属于 11 类 |
+| 有视频但没声音 | `amixer -c 0` 的 Capture MIC Path、`/dev/snd/pcmC0D0c`、是否添加 `--no-audio` |
 | 单图识别正常，实时没框 | AI 日志、目标大小、旋转、摄像头画面与训练数据的差异 |
 | 名称错或漏检 | 模型精度、光照、目标尺度；本模型不是成熟成品 |
 | 端口占用/摄像头打开失败 | 是否同时启动了旧人脸程序或第二个新程序 |
 
 模型和数据来源、训练命令见 README.md，实际验证版本见 STATUS.md。
 
-## 9. 分段时延抓取
+## 10. 分段时延抓取
 
 先停止正在运行的实例，再从 Ubuntu 仓库根目录执行：
 

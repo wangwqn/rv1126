@@ -27,8 +27,9 @@ start_service() {
         set -- --sensor-mode 1080p --rotation 270 --threshold 0.35
     fi
     cd "$APP_DIR"
-    start-stop-daemon -S -b -m -p "$PID_FILE" -x "$APP" -- "$@" \
-        >"$LOG_FILE" 2>&1
+    : >"$LOG_FILE"
+    nohup start-stop-daemon -S -m -p "$PID_FILE" -x "$APP" -- "$@" \
+        >"$LOG_FILE" 2>&1 </dev/null &
     sleep 2
     if pid=$(running_pid); then
         echo "Started: pid=$pid log=$LOG_FILE"
@@ -112,9 +113,25 @@ health_service() {
         echo "Unhealthy: TNR is not ON" >&2
         return 1
     }
+    audio_fd=0
+    for fd in /proc/"$pid"/fd/*; do
+        case "$(readlink "$fd" 2>/dev/null || true)" in
+            /dev/snd/pcm*C*c) audio_fd=1; break ;;
+        esac
+    done
+    [ "$audio_fd" -eq 1 ] || {
+        echo "Unhealthy: ALSA capture device is not open" >&2
+        return 1
+    }
+    audio_line=$(grep ' audio(captured=' "$LOG_FILE" 2>/dev/null | tail -1)
+    audio_captured=$(echo "$audio_line" | sed -n 's/.*audio(captured=\([0-9][0-9]*\).*/\1/p')
+    [ -n "$audio_captured" ] && [ "$audio_captured" -gt 0 ] || {
+        echo "Unhealthy: audio capture has not produced packets" >&2
+        return 1
+    }
     version=unknown
     [ ! -s "$APP_DIR/VERSION" ] || version=$(tr -d '[:space:]' <"$APP_DIR/VERSION")
-    echo "Healthy: version=$version pid=$pid interval=${interval}s main_delta=$((main_after-main_before)) sub_delta=$((sub_after-sub_before)) ErrCnt=$errors TNR=ON RTSP=8554"
+    echo "Healthy: version=$version pid=$pid interval=${interval}s main_delta=$((main_after-main_before)) sub_delta=$((sub_after-sub_before)) audio_packets=$audio_captured ErrCnt=$errors TNR=ON RTSP=8554"
 }
 
 command=${1:-}

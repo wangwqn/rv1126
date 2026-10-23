@@ -54,7 +54,9 @@ adb shell "cd '$remote_dir' && sha256sum -c DEPLOYED_SHA256SUMS"
 adb shell "'$controller' start"
 healthy=0
 for attempt in $(seq 1 10); do
-  if adb shell "'$controller' health"; then
+  health_output=$(adb shell "'$controller' health" 2>&1 | tr -d '\r') || true
+  printf '%s\n' "$health_output"
+  if grep -q '^Healthy:' <<<"$health_output"; then
     healthy=1
     break
   fi

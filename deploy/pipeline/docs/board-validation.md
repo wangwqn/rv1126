@@ -5,6 +5,9 @@
 ```text
 主流：1920x1080 输入，旋转 270 度后 1080x1920，H.264 Baseline，30 FPS，4 Mbps
 子流：640x360 输入，旋转 270 度后 360x640，H.264 Baseline，30 FPS，600 kbps
+
+音频：ALSA `plughw:0,0` PCM S16LE 8 kHz 双声道输入，软件下混后输出
+G.711A/PCMA 8 kHz 单声道，20 ms/包；主、子 RTSP Session 都带音轨。
 AI：3 FPS，阈值 0.35
 缓冲：VI/RGA 8，编码包队列 8
 传感器：IMX415 1944x1097 RAW12，驱动有效裁剪 1920x1080，30 FPS
@@ -99,6 +102,7 @@ ffprobe -v error -rtsp_transport udp \
   rtsp://开发板当前IP:8554/live/main_stream
 
 bash scripts/test_rtsp_udp.sh 开发板当前IP 1800
+bash scripts/test_rtsp_av.sh 开发板当前IP 10
 ```
 
 正式验收必须从另一台机器经实际 Wi-Fi/以太网直连开发板，脚本同时解码主、子流，

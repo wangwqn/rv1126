@@ -1,4 +1,5 @@
 #include "vision/rk_backend.hpp"
+#include <alsa/asoundlib.h>
 #ifdef RKAIQ
 #include <rk_aiq_user_api_imgproc.h>
 #include <rk_aiq_user_api_sysctl.h>
@@ -20,6 +21,53 @@
 
 namespace vision {
 namespace {
+void check_alsa(int status, const std::string& operation) {
+    if (status < 0)
+        throw std::runtime_error(operation + ": " + snd_strerror(status));
+}
+
+void configure_capture_source(const Config& config) {
+    if (config.audio_source == "current") return;
+    snd_mixer_t* raw_mixer = nullptr;
+    check_alsa(snd_mixer_open(&raw_mixer, 0), "ALSA mixer open");
+    std::unique_ptr<snd_mixer_t, int (*)(snd_mixer_t*)> mixer(raw_mixer,
+                                                              snd_mixer_close);
+    check_alsa(snd_mixer_attach(mixer.get(), config.audio_mixer.c_str()),
+               "ALSA mixer attach " + config.audio_mixer);
+    check_alsa(snd_mixer_selem_register(mixer.get(), nullptr, nullptr),
+               "ALSA mixer register");
+    check_alsa(snd_mixer_load(mixer.get()), "ALSA mixer load");
+
+    snd_mixer_selem_id_t* raw_id = nullptr;
+    check_alsa(snd_mixer_selem_id_malloc(&raw_id), "ALSA mixer id allocation");
+    std::unique_ptr<snd_mixer_selem_id_t, void (*)(snd_mixer_selem_id_t*)>
+        id(raw_id, snd_mixer_selem_id_free);
+    snd_mixer_selem_id_set_index(id.get(), 0);
+    snd_mixer_selem_id_set_name(id.get(), "Capture MIC Path");
+    snd_mixer_elem_t* element = snd_mixer_find_selem(mixer.get(), id.get());
+    if (!element || !snd_mixer_selem_is_enumerated(element))
+        throw std::runtime_error("ALSA mixer has no enumerated Capture MIC Path");
+
+    const std::string requested = config.audio_source == "main"
+                                      ? "Main Mic"
+                                      : "Hands Free Mic";
+    const unsigned items = snd_mixer_selem_get_enum_items(element);
+    for (unsigned item = 0; item < items; ++item) {
+        char name[64]{};
+        check_alsa(snd_mixer_selem_get_enum_item_name(element, item,
+                                                       sizeof(name), name),
+                   "ALSA mixer read capture source");
+        if (requested == name) {
+            check_alsa(snd_mixer_selem_set_enum_item(
+                           element, SND_MIXER_SCHN_FRONT_LEFT, item),
+                       "ALSA mixer select " + requested);
+            std::fprintf(stderr, "audio: Capture MIC Path=%s\n", requested.c_str());
+            return;
+        }
+    }
+    throw std::runtime_error("ALSA mixer does not provide capture source " + requested);
+}
+
 void warn_rk(int status, const char* operation) noexcept {
     if (status) std::fprintf(stderr, "cleanup: %s failed (%d)\n", operation, status);
 }
@@ -414,7 +462,67 @@ Detection ObjectDetector::infer(const Frame& frame) {
     return result;
 }
 
-RtspServer::RtspServer(int port) {
+AlsaCapture::AlsaCapture(const Config& config)
+    : channels_(static_cast<unsigned>(config.audio_input_channels)),
+      frames_per_packet_(sample_rate * static_cast<unsigned>(config.audio_period_ms) /
+                         1000u) {
+    configure_capture_source(config);
+    snd_pcm_t* handle = nullptr;
+    check_alsa(snd_pcm_open(&handle, config.audio_device.c_str(),
+                            SND_PCM_STREAM_CAPTURE, SND_PCM_NONBLOCK),
+               "ALSA capture open " + config.audio_device);
+    try {
+        check_alsa(snd_pcm_set_params(handle, SND_PCM_FORMAT_S16_LE,
+                                      SND_PCM_ACCESS_RW_INTERLEAVED,
+                                      channels_, sample_rate, 1, 40000),
+                   "ALSA capture configure");
+        // A non-blocking capture handle remains PREPARED after set_params();
+        // unlike a blocking read it does not implicitly start before EAGAIN.
+        check_alsa(snd_pcm_start(handle), "ALSA capture start");
+        pcm_ = handle;
+    } catch (...) {
+        snd_pcm_close(handle);
+        throw;
+    }
+    std::fprintf(stderr,
+                 "audio: ALSA %s PCM S16LE %u Hz %u channel(s), %zu frames/packet\n",
+                 config.audio_device.c_str(), sample_rate, channels_,
+                 frames_per_packet_);
+}
+
+AlsaCapture::~AlsaCapture() {
+    auto* handle = static_cast<snd_pcm_t*>(pcm_);
+    if (!handle) return;
+    snd_pcm_drop(handle);
+    snd_pcm_close(handle);
+}
+
+std::size_t AlsaCapture::read_frames(std::int16_t* interleaved,
+                                     std::size_t frames, int timeout_ms) {
+    if (!interleaved || !frames) return 0;
+    auto* handle = static_cast<snd_pcm_t*>(pcm_);
+    snd_pcm_sframes_t result = snd_pcm_readi(handle, interleaved, frames);
+    if (result == -EAGAIN) {
+        const int ready = snd_pcm_wait(handle, timeout_ms);
+        if (ready == 0 || ready == -EINTR) return 0;
+        if (ready < 0) result = ready;
+        else result = snd_pcm_readi(handle, interleaved, frames);
+    }
+    if (result == -EINTR || result == -EAGAIN) return 0;
+    if (result < 0) {
+        const int recovered = snd_pcm_recover(handle, static_cast<int>(result), 1);
+        if (recovered < 0)
+            throw std::runtime_error(std::string("ALSA capture read: ") +
+                                     snd_strerror(recovered));
+        if (snd_pcm_state(handle) == SND_PCM_STATE_PREPARED)
+            check_alsa(snd_pcm_start(handle), "ALSA capture restart");
+        ++recoveries_;
+        return 0;
+    }
+    return static_cast<std::size_t>(result);
+}
+
+RtspServer::RtspServer(int port, bool audio) {
     server_ = create_rtsp_demo(port);
     if (!server_) throw std::runtime_error("RTSP server creation failed");
     try {
@@ -423,8 +531,17 @@ RtspServer::RtspServer(int port) {
             sessions_[i] = rtsp_new_session(server_, paths[i]);
             if (!sessions_[i]) throw std::runtime_error("RTSP session creation failed");
             check_rk(rtsp_set_video(sessions_[i], RTSP_CODEC_ID_VIDEO_H264, nullptr, 0), "RTSP set video");
-            check_rk(rtsp_sync_video_ts(sessions_[i], rtsp_get_reltime(), rtsp_get_ntptime()),
+            if (audio)
+                check_rk(rtsp_set_audio(sessions_[i], RTSP_CODEC_ID_AUDIO_G711A,
+                                        nullptr, 0),
+                         "RTSP set G.711A audio");
+            const std::uint64_t relative = rtsp_get_reltime();
+            const std::uint64_t ntp = rtsp_get_ntptime();
+            check_rk(rtsp_sync_video_ts(sessions_[i], relative, ntp),
                      "RTSP sync timestamp");
+            if (audio)
+                check_rk(rtsp_sync_audio_ts(sessions_[i], relative, ntp),
+                         "RTSP sync audio timestamp");
         }
     } catch (...) { rtsp_del_demo(server_); server_ = nullptr; throw; }
 }
@@ -439,6 +556,15 @@ void RtspServer::send(int stream, const Frame& packet) {
     // rtsp_tx_video may return a non-negative byte count, rather than zero.
     if (rtsp_tx_video(sessions_[stream], data, static_cast<int>(size), pts) < 0)
         throw std::runtime_error("RTSP video transmit failed");
+}
+void RtspServer::send_audio(const std::vector<std::uint8_t>& packet,
+                            std::uint64_t pts_us) {
+    if (packet.empty() || packet.size() > static_cast<std::size_t>(INT_MAX))
+        throw std::runtime_error("invalid encoded audio packet size");
+    for (auto* session : sessions_)
+        if (rtsp_tx_audio(session, packet.data(), static_cast<int>(packet.size()),
+                          pts_us) < 0)
+            throw std::runtime_error("RTSP audio transmit failed");
 }
 void RtspServer::poll() {
     errno = 0;

@@ -7,6 +7,7 @@
 - ALIENTEK RV1126 开发板，32 位 ARM Linux。
 - 当前项目所用的 RKMedia、RGA、RKNN 1.7、RKAiq 和 glibc/libstdc++ ABI。
 - IMX415 摄像头，`rkispp_scale0`/`rkispp_scale1` 视频节点拓扑。
+- RK809/RK817 ALSA capture `card 0, device 0` 和 `libasound.so.2`。
 - 不保证兼容 RV1126B、其他厂商 rootfs 或不同版本 Rockchip 多媒体库。
 
 `objects/` 是 11 类常见物品检测的完整运行集合。`face/` 是原始 RockX 人脸检测
@@ -52,13 +53,16 @@ adb shell 'tail -100 /tmp/rv1126-object.log'
 adb shell '/root/rv1126_objects/rv1126-object install-autostart'
 ```
 
-`health` 会在采样窗口内确认主/子视频帧计数增长，并检查 RTSP 监听、
+`health` 会在采样窗口内确认主/子视频帧和音频包计数增长，并检查 RTSP 监听、
 ISPP `ErrCnt` 和 TNR。宿主机可执行 `bash scripts/rollback_device.sh` 恢复上一次
 已验证部署；回滚前会先校验全部 `.previous` 文件，失败时不停止当前服务，
 交换后会等待板端健康检查通过。
 
 主流地址为 `rtsp://开发板IP:8554/live/main_stream`，子流地址为
 `rtsp://开发板IP:8554/live/sub_stream`。
+两条 Session 都默认包含 8 kHz 单声道 G.711A/PCMA 音轨。程序从
+`plughw:0,0` 采集双声道 PCM、选择 Main Mic、下混并以 20 ms 分包；
+`--no-audio` 可关闭。执行 `bash scripts/test_rtsp_av.sh 开发板IP 10` 可同时验收。
 当前主流默认 4 Mbps、子流默认 600 kbps。程序默认以 `--sensor-mode 1080p` 选择
 IMX415 1944×1097 RAW12、有效裁剪 1920×1080、30 FPS 模式，TNR 仍由板端 IQ
 配置保持开启。旧 4K 输入在 4/5 Mbps 时都约为 29.5 FPS；1080p 真机连续
