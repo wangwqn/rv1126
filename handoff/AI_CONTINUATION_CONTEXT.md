@@ -47,7 +47,7 @@ IMAGE_TYPE_BGR888 -> RK_FORMAT_RGB_888
 
 路径：`rv1126_object_training/`。
 
-类别顺序固定为：
+稳定发布的类别顺序固定为：
 
 | ID | 英文 | 中文 | COCO zero-based ID |
 | --- | --- | --- | --- |
@@ -65,12 +65,20 @@ IMAGE_TYPE_BGR888 -> RK_FORMAT_RGB_888
 
 “电脑”目前只对应 COCO `laptop`，不包含台式机机箱。不要只改 `classes.json` 就声称增加了类别；类别改变需要重新标注、训练、导出、量化并更新中文标签图集。
 
+v1.8.1 另有一个尚未替换稳定发布的 23 类候选：保持上述 0–10 不变，追加
+person、backpack、handbag、bowl、sandwich、chair、couch、potted_plant、
+dining_table、remote、clock、scissors。配置在 `config/classes-v2.json`，候选包在
+`release/rv1126/candidates/objects23/`。它已完成主机训练、ONNX 数值检查和
+RKNN Toolkit 1.7.5 转换；由于开发板当时离线，不能宣称已经通过 NPU 或实时流验证。
+
 ### 数据
 
 - COCO 2017 真实图片和官方 YOLO 标注。
 - 437 张训练图、105 张验证图；两个分区的图片 ID 不重叠。
 - 数据清单及每类实例数在 `datasets/coco_objects/manifest.json`。
 - 图片可能包含多个所选类别，脚本保留图片内所有 11 类标注。
+- 23 类候选数据为 1362 张训练图、315 张验证图，选择与统计清单位于
+  `datasets/coco_objects_v2/`；图片和标签同样不进入 Git。
 
 ### 模型与训练
 

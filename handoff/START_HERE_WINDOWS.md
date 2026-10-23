@@ -21,7 +21,7 @@ RKNN 使用第一代 Toolkit 1.7.5。请保留现有可运行版本，先解释�
 ## 包内主要内容
 
 - `15_rkmedia_rockx_face_detection_rtsp/`：原始双码流人脸检测 RTSP 工程，已修复颜色和旋转问题。
-- `rv1126_object_training/`：11 类物品检测的数据、训练、ONNX/RKNN 转换、板端 C++ 与测试结果。
+- `rv1126_object_training/`：稳定 11 类及候选 23 类物品检测的数据清单、训练、ONNX/RKNN 转换、板端 C++ 与测试结果。
 - `rv1126_object_training/handoff/`：历史工作、关键结论、AI 接续上下文及原始文本附件。
 
 ## Windows 能做什么

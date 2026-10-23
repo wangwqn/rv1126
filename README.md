@@ -8,12 +8,13 @@
 仓库包含原始人脸工程、物体检测工程、固定版本 YOLOv5 源码、COCO 数据选择清单、
 训练结果、ONNX/RKNN 产物，以及针对当前 ALIENTEK RV1126 BSP 编译的发布包。
 不包含不可移植的 Python 虚拟环境、下载缓存、完整 Rockchip SDK 和 CMake 中间文件。
-437 张训练图和 105 张验证图不上传，可用已记录的选择参数重新下载生成。
+默认 11 类数据集包含 437 张训练图和 105 张验证图；新增 23 类候选数据集包含
+1362 张训练图和 315 张验证图。图片与标注不上传，可用已记录的选择参数重新生成。
 
 ```bash
 git clone git@github.com:wangwqn/rv1126.git
 cd rv1126
-git checkout v1.8.0
+git checkout v1.8.1
 bash scripts/verify_checkout.sh
 ```
 
@@ -42,9 +43,15 @@ adb shell '/root/rv1126_objects/rv1126-object health'
 
 ## 检测类别与名称显示
 
-11 类：手机、杯子、瓶子、书籍、鼠标、键盘、笔记本电脑、显示器/电视、香蕉、苹果、橙子。
-“电脑”目前指笔记本电脑；台式机机箱、其他水果不属于这个模型的类别。
-类别顺序由 `config/classes.json` 固定。改类别后需要重新准备标注、训练和生成标签，不能只改标签文件。
+当前稳定发布仍为 11 类：手机、杯子、瓶子、书籍、鼠标、键盘、笔记本电脑、
+显示器/电视、香蕉、苹果、橙子，类别顺序由 `config/classes.json` 固定。
+
+23 类候选模型保持以上 ID 0–10 不变，并追加：人、背包、手提包、碗、三明治、
+椅子、沙发、盆栽、餐桌、遥控器、时钟、剪刀。它由 `config/classes-v2.json`
+定义，已经完成主机训练、ONNX 检查和 RKNN 转换，但尚未完成 RV1126 真机回归，
+因此存放在 `release/rv1126/candidates/objects23/`，不会自动覆盖稳定模型。
+“电脑”目前仍指 COCO 的笔记本电脑，不包含台式机机箱。改变类别后必须重新准备
+标注、训练、导出、量化并生成标签，不能只改 JSON 或标签图片。
 
 主码流叠加绿色框、中文类别名和置信度，例如“苹果 92%”。
 子码流保留无标注的低分辨率预览，AI 从子流取帧，检测结果按坐标缩放到主流。
@@ -66,7 +73,8 @@ RV1126 旧 RGA API 只有 8 个区域，因此实时显示最多 2 个带名称�
 ## 当前数据与模型定位
 
 数据来自公开 COCO 2017 的真实图片及官方类别对应标注，并非生成图。
-初始选取每类最多 40 张训练图、10 张验证图，合并去重后是 437 / 105 张。
+默认 11 类数据初始选取每类最多 40 张训练图、10 张验证图，合并去重后是
+437 / 105 张。23 类候选选取每类最多 60 / 15 张，合并去重后是 1362 / 315 张。
 一张图里的所选类别都保留标注。训练与验证来自不同 COCO 分区，没有图片 ID 交集。
 具体文件和各类实例数量见 `datasets/coco_objects/manifest.json`。
 
@@ -78,10 +86,12 @@ RV1126 旧 RGA API 只有 8 个区域，因此实时显示最多 2 个带名称�
 ## 目录
 
 ```text
-config/classes.json        类别顺序、中文名、原 COCO 类别索引
+config/classes.json        稳定 11 类的顺序、中文名、原 COCO 类别索引
+config/classes-v2.json     候选 23 类配置；保持原 11 类 ID 不变
 scripts/                   下载标注、训练、导出、量化、推送与预览
 third_party/yolov5/         官方 YOLOv5 v6.0，固定 commit
 datasets/coco_objects/     本机数据集；仓库只保存选择清单，图片和标签需重新生成
+datasets/coco_objects_v2/  23 类候选数据集；同样只跟踪选择清单与统计
 runs/                      训练权重、损失和验证指标
 artifacts/                 ONNX、RKNN、模型元数据、中文标签、测试输出
 deploy/objects.cpp         RKNN RAII、预处理、后处理、中文绘制
@@ -118,6 +128,38 @@ cd /home/alientek/桌面/rv1126_object_training
 .venv-rknn/bin/python scripts/convert_rknn.py
 .venv-train/bin/python scripts/generate_labels.py
 ```
+
+重新生成并训练 23 类候选模型时使用独立目录，避免覆盖稳定 11 类产物：
+
+```bash
+.venv-train/bin/python scripts/prepare_data.py \
+  --classes config/classes-v2.json --train-per-class 60 --val-per-class 15 \
+  --output datasets/coco_objects_v2 --resume
+.venv-train/bin/python scripts/remap_pretrained.py \
+  --classes config/classes-v2.json --output artifacts/init23.pt
+.venv-train/bin/python scripts/train.py \
+  --data datasets/coco_objects_v2/data.yaml --weights artifacts/init23.pt \
+  --img 320 --batch-size 16 --epochs 30 --device cpu --workers 0 \
+  --project runs --name objects23 --cache ram
+.venv-train/bin/python scripts/train.py \
+  --data datasets/coco_objects_v2/data.yaml --weights runs/objects23/weights/best.pt \
+  --hyp config/hyp.objects23-finetune.yaml --image-weights \
+  --img 320 --batch-size 16 --epochs 30 --device cpu --workers 0 \
+  --project runs --name objects23_finetune --cache ram
+.venv-train/bin/python scripts/export_onnx.py \
+  --classes config/classes-v2.json --weights runs/objects23_finetune/weights/best.pt \
+  --output artifacts/objects23.onnx
+.venv-train/bin/python scripts/prepare_calibration.py \
+  --images datasets/coco_objects_v2/images/train --output artifacts/calibration23
+.venv-rknn/bin/python scripts/convert_rknn.py \
+  --onnx artifacts/objects23.onnx --dataset artifacts/calibration23/dataset.txt \
+  --output artifacts/objects23-rv1126.rknn
+.venv-train/bin/python scripts/generate_labels.py \
+  --classes config/classes-v2.json --output artifacts/labels23.png
+```
+
+开发板在线后可运行 `bash scripts/push_objects23_candidate.sh`，它会上传到
+`/root/rv1126_objects23_candidate/`，不会替换 `/root/rv1126_objects/`。
 
 再次训练同名目录时，上游会自动增加序号。微调已有本工程权重可用 `--weights .../best.pt`；
 这会重新创建优化器，不等同于断点恢复。包装器明确拒绝 `--resume`。

@@ -9,10 +9,11 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def main():
     parser = argparse.ArgumentParser()
+    parser.add_argument("--classes", type=Path, default=ROOT / "config/classes.json")
     parser.add_argument("--font", default="/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc")
     parser.add_argument("--output", type=Path, default=ROOT / "artifacts/labels.png")
     args = parser.parse_args()
-    classes = json.loads((ROOT / "config/classes.json").read_text())
+    classes = json.loads(args.classes.read_text())
     font = ImageFont.truetype(args.font, size=22, index=2)  # Noto Sans CJK SC
     atlas = Image.new("RGB", (224, 32 * len(classes)), (35, 35, 35))
     draw = ImageDraw.Draw(atlas)

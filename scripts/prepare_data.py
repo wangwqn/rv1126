@@ -48,6 +48,7 @@ def remap(text, mapping):
 
 def main():
     parser = argparse.ArgumentParser()
+    parser.add_argument("--classes", type=Path, default=ROOT / "config/classes.json")
     parser.add_argument("--train-per-class", type=int, default=60)
     parser.add_argument("--val-per-class", type=int, default=15)
     parser.add_argument("--seed", type=int, default=42)
@@ -58,7 +59,7 @@ def main():
         parser.error("Sample counts must be positive")
     if args.output.exists() and not args.resume:
         parser.error("Output exists; choose a new --output to avoid mixing dataset versions")
-    classes = json.loads((ROOT / "config/classes.json").read_text())
+    classes = json.loads(args.classes.read_text())
     plan = {"classes": classes, "seed": args.seed, "train_per_class": args.train_per_class,
             "val_per_class": args.val_per_class}
     plan_path = args.output / "selection.json"

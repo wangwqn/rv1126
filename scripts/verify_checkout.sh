@@ -20,15 +20,27 @@ required=(
   "deploy/pipeline/include/vision/audio.hpp"
   "deploy/objects.cpp"
   "config/classes.json"
+  "config/classes-v2.json"
+  "config/hyp.objects23-finetune.yaml"
   "third_party/yolov5/train.py"
   "datasets/coco_objects/selection.json"
   "datasets/coco_objects/manifest.json"
+  "datasets/coco_objects_v2/selection.json"
+  "datasets/coco_objects_v2/manifest.json"
   "runs/objects11_refine/weights/best.pt"
+  "runs/objects23_finetune/results.csv"
+  "runs/objects23_finetune/weights/best.pt"
   "artifacts/objects.onnx"
   "artifacts/objects-rv1126.rknn"
+  "artifacts/objects23.onnx"
+  "artifacts/objects23-rv1126.rknn"
+  "artifacts/objects23-rv1126.json"
+  "artifacts/labels23.png"
+  "scripts/push_objects23_candidate.sh"
   "release/rv1126/SHA256SUMS"
   "release/rv1126/VERSION"
   "release/rv1126/objects/rv1126-object"
+  "release/rv1126/candidates/objects23/SHA256SUMS"
 )
 
 for relative_path in "${required[@]}"; do
@@ -63,5 +75,10 @@ fi
   sha256sum -c SHA256SUMS
 )
 
+(
+  cd "$project_dir/release/rv1126/candidates/objects23"
+  sha256sum -c SHA256SUMS
+)
+
 echo "Checkout v$version is complete: source, dataset manifests, training outputs, models and RV1126 release files verified."
-echo "COCO images/labels are intentionally excluded; regenerate them with scripts/prepare_data.py."
+echo "COCO images/labels are intentionally excluded; regenerate either dataset with scripts/prepare_data.py and its matching --classes/--output options."

@@ -20,6 +20,7 @@ def raw_heads(self, features):
 
 def main():
     parser = argparse.ArgumentParser()
+    parser.add_argument("--classes", type=Path, default=ROOT / "config/classes.json")
     parser.add_argument("--weights", type=Path, required=True)
     parser.add_argument("--size", type=int, default=320)
     parser.add_argument("--output", type=Path, default=ROOT / "artifacts/objects.onnx")
@@ -32,13 +33,13 @@ def main():
     model = (checkpoint.get("ema") or checkpoint["model"]).float().eval()
     if any(isinstance(layer, torch.nn.SiLU) for layer in model.modules()):
         raise RuntimeError("SiLU checkpoint: train with scripts/train.py before exporting")
-    classes = json.loads((ROOT / "config/classes.json").read_text())
+    classes = json.loads(args.classes.read_text())
     names = [item["name"] for item in classes]
     actual_names = model.names
     if isinstance(actual_names, dict):
         actual_names = [actual_names[i] for i in range(len(actual_names))]
     if list(actual_names) != names:
-        raise RuntimeError("Checkpoint class order does not match config/classes.json")
+        raise RuntimeError("Checkpoint class order does not match " + str(args.classes))
     detector = model.model[-1]
     if detector.nl != 3:
         raise RuntimeError("Expected exactly three YOLO output heads")

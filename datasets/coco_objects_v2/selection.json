@@ -1,0 +1,122 @@
+{
+  "classes": [
+    {
+      "name": "cell_phone",
+      "zh": "手机",
+      "coco_index": 67
+    },
+    {
+      "name": "cup",
+      "zh": "杯子",
+      "coco_index": 41
+    },
+    {
+      "name": "bottle",
+      "zh": "瓶子",
+      "coco_index": 39
+    },
+    {
+      "name": "book",
+      "zh": "书籍",
+      "coco_index": 73
+    },
+    {
+      "name": "mouse",
+      "zh": "鼠标",
+      "coco_index": 64
+    },
+    {
+      "name": "keyboard",
+      "zh": "键盘",
+      "coco_index": 66
+    },
+    {
+      "name": "laptop",
+      "zh": "笔记本电脑",
+      "coco_index": 63
+    },
+    {
+      "name": "monitor_tv",
+      "zh": "显示器/电视",
+      "coco_index": 62
+    },
+    {
+      "name": "banana",
+      "zh": "香蕉",
+      "coco_index": 46
+    },
+    {
+      "name": "apple",
+      "zh": "苹果",
+      "coco_index": 47
+    },
+    {
+      "name": "orange",
+      "zh": "橙子",
+      "coco_index": 49
+    },
+    {
+      "name": "person",
+      "zh": "人",
+      "coco_index": 0
+    },
+    {
+      "name": "backpack",
+      "zh": "背包",
+      "coco_index": 24
+    },
+    {
+      "name": "handbag",
+      "zh": "手提包",
+      "coco_index": 26
+    },
+    {
+      "name": "bowl",
+      "zh": "碗",
+      "coco_index": 45
+    },
+    {
+      "name": "sandwich",
+      "zh": "三明治",
+      "coco_index": 48
+    },
+    {
+      "name": "chair",
+      "zh": "椅子",
+      "coco_index": 56
+    },
+    {
+      "name": "couch",
+      "zh": "沙发",
+      "coco_index": 57
+    },
+    {
+      "name": "potted_plant",
+      "zh": "盆栽",
+      "coco_index": 58
+    },
+    {
+      "name": "dining_table",
+      "zh": "餐桌",
+      "coco_index": 60
+    },
+    {
+      "name": "remote",
+      "zh": "遥控器",
+      "coco_index": 65
+    },
+    {
+      "name": "clock",
+      "zh": "时钟",
+      "coco_index": 74
+    },
+    {
+      "name": "scissors",
+      "zh": "剪刀",
+      "coco_index": 76
+    }
+  ],
+  "seed": 42,
+  "train_per_class": 60,
+  "val_per_class": 15
+}

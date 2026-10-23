@@ -5,6 +5,11 @@ datasets/*
 datasets/coco_objects/*
 !datasets/coco_objects/selection.json
 !datasets/coco_objects/manifest.json
+!datasets/coco_objects_v2/
+datasets/coco_objects_v2/*
+!datasets/coco_objects_v2/selection.json
+!datasets/coco_objects_v2/manifest.json
+artifacts/calibration23/
 build*/
 Testing/
 __pycache__/

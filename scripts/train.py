@@ -2,6 +2,7 @@
 import os
 from pathlib import Path
 import sys
+import warnings
 import host_env
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -9,6 +10,10 @@ YOLO = ROOT / "third_party/yolov5"
 os.environ.setdefault("OMP_NUM_THREADS", "2")
 os.environ.setdefault("MKL_NUM_THREADS", "2")
 os.environ.setdefault("WANDB_DISABLED", "true")
+warnings.filterwarnings(
+    "ignore",
+    message="User provided device_type of 'cuda', but CUDA is not available.*",
+)
 sys.path.insert(0, str(YOLO))
 
 import torch
