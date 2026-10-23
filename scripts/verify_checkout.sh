@@ -12,6 +12,7 @@ required=(
   "scripts/test_rtsp_udp.sh"
   "scripts/lib/atomic_adb_deploy.sh"
   "scripts/deploy_release.sh"
+  "scripts/rollback_device.sh"
   "15_rkmedia_rockx_face_detection_rtsp/CMakeLists.txt"
   "deploy/pipeline/CMakeLists.txt"
   "deploy/pipeline/include/vision/config.hpp"

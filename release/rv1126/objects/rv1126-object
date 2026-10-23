@@ -70,6 +70,53 @@ status_service() {
     return 3
 }
 
+pipeline_frame() {
+    channel=$1
+    sed -n "/^Output .*${channel}/s/.*(frame:\([0-9][0-9]*\).*/\1/p" /proc/rkispp0 2>/dev/null | head -1
+}
+
+health_service() {
+    interval=${RV1126_HEALTH_INTERVAL:-3}
+    case "$interval" in *[!0-9]*|'') echo "Invalid health interval: $interval" >&2; return 2 ;; esac
+    [ "$interval" -ge 1 ] && [ "$interval" -le 30 ] || {
+        echo "Health interval must be between 1 and 30 seconds" >&2
+        return 2
+    }
+    pid=$(running_pid) || { echo "Unhealthy: service is not running" >&2; return 1; }
+    netstat -lnt 2>/dev/null | grep -q ':8554[[:space:]]' || {
+        echo "Unhealthy: RTSP TCP port 8554 is not listening" >&2
+        return 1
+    }
+    main_before=$(pipeline_frame rkispp_scale0)
+    sub_before=$(pipeline_frame rkispp_scale1)
+    [ -n "$main_before" ] && [ -n "$sub_before" ] || {
+        echo "Unhealthy: cannot read ISPP output counters" >&2
+        return 1
+    }
+    sleep "$interval"
+    running_pid >/dev/null || { echo "Unhealthy: service exited during sampling" >&2; return 1; }
+    main_after=$(pipeline_frame rkispp_scale0)
+    sub_after=$(pipeline_frame rkispp_scale1)
+    [ -n "$main_after" ] && [ -n "$sub_after" ] || {
+        echo "Unhealthy: ISPP counters disappeared" >&2
+        return 1
+    }
+    [ "$main_after" -gt "$main_before" ] && [ "$sub_after" -gt "$sub_before" ] || {
+        echo "Unhealthy: video counters did not advance" >&2
+        return 1
+    }
+    errors=$(sed -n 's/^Interrupt .*ErrCnt:\([0-9][0-9]*\).*/\1/p' /proc/rkispp0 | head -1)
+    [ "${errors:-1}" -eq 0 ] || { echo "Unhealthy: ISPP ErrCnt=$errors" >&2; return 1; }
+    tnr=$(grep '^TNR ' /proc/rkispp0 2>/dev/null | head -1)
+    echo "$tnr" | grep -q 'TNR[[:space:]]*ON' || {
+        echo "Unhealthy: TNR is not ON" >&2
+        return 1
+    }
+    version=unknown
+    [ ! -s "$APP_DIR/VERSION" ] || version=$(tr -d '[:space:]' <"$APP_DIR/VERSION")
+    echo "Healthy: version=$version pid=$pid interval=${interval}s main_delta=$((main_after-main_before)) sub_delta=$((sub_after-sub_before)) ErrCnt=$errors TNR=ON RTSP=8554"
+}
+
 command=${1:-}
 [ "$#" -eq 0 ] || shift
 case "$command" in
@@ -77,6 +124,7 @@ case "$command" in
     stop) stop_service ;;
     restart) stop_service; start_service "$@" ;;
     status) status_service ;;
+    health) health_service ;;
     foreground)
         cd "$APP_DIR"
         if [ "$#" -eq 0 ]; then
@@ -96,7 +144,7 @@ case "$command" in
         echo "Removed boot service"
         ;;
     *)
-        echo "Usage: $0 {start|stop|restart|status|foreground|install-autostart|remove-autostart} [program options...]" >&2
+        echo "Usage: $0 {start|stop|restart|status|health|foreground|install-autostart|remove-autostart} [program options...]" >&2
         exit 2
         ;;
 esac

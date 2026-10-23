@@ -31,9 +31,9 @@ sha256sum -c SHA256SUMS
 ## 部署物体检测
 
 ```bash
-bash scripts/deploy_release.sh
-adb shell '/root/rv1126_objects/rv1126-object start'
+bash scripts/deploy_release.sh --restart
 adb shell '/root/rv1126_objects/rv1126-object status'
+adb shell '/root/rv1126_objects/rv1126-object health'
 ```
 
 部署使用隐藏暂存目录：全部文件上传后先在板端执行 SHA256 校验，通过后
@@ -46,10 +46,16 @@ adb shell '/root/rv1126_objects/rv1126-object status'
 ```bash
 adb shell '/root/rv1126_objects/rv1126-object stop'
 adb shell '/root/rv1126_objects/rv1126-object restart'
+adb shell '/root/rv1126_objects/rv1126-object health'
 adb shell 'tail -100 /tmp/rv1126-object.log'
 # 可选：安装 Buildroot 开机服务
 adb shell '/root/rv1126_objects/rv1126-object install-autostart'
 ```
+
+`health` 会在采样窗口内确认主/子视频帧计数增长，并检查 RTSP 监听、
+ISPP `ErrCnt` 和 TNR。宿主机可执行 `bash scripts/rollback_device.sh` 恢复上一次
+已验证部署；回滚前会先校验全部 `.previous` 文件，失败时不停止当前服务，
+交换后会等待板端健康检查通过。
 
 主流地址为 `rtsp://开发板IP:8554/live/main_stream`，子流地址为
 `rtsp://开发板IP:8554/live/sub_stream`。

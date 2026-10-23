@@ -99,6 +99,7 @@ adb pull /root/rv1126_objects/test-result.jpg ./test-result.jpg
 
 ```bash
 adb shell '/root/rv1126_objects/rv1126-object status'
+adb shell '/root/rv1126_objects/rv1126-object health'
 adb shell '/root/rv1126_objects/rv1126-object restart'
 adb shell 'tail -100 /tmp/rv1126-object.log'
 ```
@@ -136,6 +137,22 @@ adb shell 'cat /proc/rkispp0'
 
 应看到 1920×1080 输入和 `TNR ON (mode: 2to1)`。需要与旧模式对照时添加
 `--sensor-mode 4k`；当前版本没有 `--disable-tnr` 参数。
+
+部署新版本并等待摄像头管线通过健康检查：
+
+```bash
+bash scripts/deploy_release.sh --restart
+```
+
+如新版本异常，回退到上一次成功部署：
+
+```bash
+bash scripts/rollback_device.sh
+```
+
+回滚在停止视频前先用 `DEPLOYED_SHA256SUMS.previous` 校验全部备份；
+任何备份缺失或校验失败都会拒绝停止当前服务。文件交换后还会重启服务并
+重试健康检查，确认视频管线恢复。
 
 ## 8. 故障定位
 

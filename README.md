@@ -13,7 +13,7 @@
 ```bash
 git clone git@github.com:wangwqn/rv1126.git
 cd rv1126
-git checkout v1.6.0
+git checkout v1.7.0
 bash scripts/verify_checkout.sh
 ```
 
@@ -32,9 +32,9 @@ P50/P95/P99/max 统计；指标边界、真机结果和一键抓取方法见
 相同开发板/rootfs 可直接上传已经编译好的物体检测发布包：
 
 ```bash
-bash scripts/deploy_release.sh
-adb shell '/root/rv1126_objects/rv1126-object start'
+bash scripts/deploy_release.sh --restart
 adb shell '/root/rv1126_objects/rv1126-object status'
+adb shell '/root/rv1126_objects/rv1126-object health'
 ```
 
 预编译程序依赖当前板载 RKMedia、RGA、RKNN、RKAiq 和 C/C++ 运行库 ABI；不同 BSP
@@ -158,8 +158,19 @@ adb pull /root/rv1126_objects/result.jpg ./artifacts/device-result.jpg
 ```bash
 adb shell '/root/rv1126_objects/rv1126-object start'
 adb shell '/root/rv1126_objects/rv1126-object status'
+adb shell '/root/rv1126_objects/rv1126-object health'
 adb shell '/root/rv1126_objects/rv1126-object stop'
 ```
+
+`health` 在默认 3 秒窗口内确认主/子 ISPP 帧计数继续增长，同时检查
+进程、RTSP 8554 监听、`ErrCnt=0` 和 TNR ON。需要恢复到上一次已验证部署时：
+
+```bash
+bash scripts/rollback_device.sh
+```
+
+回滚脚本会先校验所有 `.previous` 文件，再停止服务、交换当前/上一版文件、
+重新校验、启动并等待健康检查通过。连续执行两次可切回刚才的版本。
 
 需要前台日志时仍可以手工运行：
 
