@@ -357,6 +357,42 @@ void test_detection_history_and_time_limits() {
     check(rejected, "zero history capacity rejected");
 }
 
+void test_detection_change_notification() {
+    vision::DetectionCache cache;
+    std::uint64_t generation = 0;
+    std::promise<void> entered;
+    auto entered_future = entered.get_future();
+    auto waiter = std::async(std::launch::async, [&] {
+        entered.set_value();
+        return cache.wait_for_change(generation, seconds(1));
+    });
+    entered_future.wait();
+    std::this_thread::sleep_for(milliseconds(15));
+    check(cache.publish(detection(100)), "notification test publishes detection");
+    check(waiter.wait_for(milliseconds(300)) == std::future_status::ready && waiter.get() &&
+              generation == 1,
+          "new detection wakes OSD without polling");
+    check(!cache.wait_for_change(generation, milliseconds(10)),
+          "unchanged detection waits until timeout");
+    check(cache.publish(detection(100, true)) &&
+              cache.wait_for_change(generation, milliseconds(0)) && generation == 2,
+          "equal-PTS replacement increments notification generation");
+
+    std::promise<void> close_entered;
+    auto close_entered_future = close_entered.get_future();
+    auto closing_waiter = std::async(std::launch::async, [&] {
+        close_entered.set_value();
+        return cache.wait_for_change(generation, seconds(5));
+    });
+    close_entered_future.wait();
+    std::this_thread::sleep_for(milliseconds(15));
+    cache.close();
+    check(closing_waiter.wait_for(milliseconds(300)) == std::future_status::ready &&
+              !closing_waiter.get(),
+          "cache close promptly wakes OSD waiter");
+    check(!cache.publish(detection(200)), "closed cache rejects late AI result");
+}
+
 void test_box_scaling_and_bounds() {
     auto input = detection(100, true);
     input.boxes = {
@@ -419,6 +455,7 @@ int main() {
         test_shared_leases_and_reentrant_deleters();
         test_slow_ai_does_not_block_main_stream();
         test_detection_history_and_time_limits();
+        test_detection_change_notification();
         test_box_scaling_and_bounds();
         std::cout << "All core tests passed\n";
         return 0;

@@ -56,6 +56,10 @@ IMX415 1944×1097 RAW12、有效裁剪 1920×1080、30 FPS 模式，TNR 仍由�
 推荐从 Ubuntu 执行 `bash scripts/capture_runtime_latency.sh 60`，自动拉取 CSV、
 检查是否丢诊断记录，并生成全量百分位表和 SVG 图。
 
+1.5.1 的 OSD 更新由 AI 检测结果通过条件变量直接唤醒，不再每 20 ms 轮询；真机
+逐样本验证的 OSD 等待 P99 从约 20.0 ms 降至约 0.64 ms，视频 DMA-BUF、VENC
+和 RTSP 数据路径未改变。
+
 局域网播放默认选择 RTP/UDP，RTSP 控制连接仍使用 TCP 8554。FFplay 示例：
 
 ```bash

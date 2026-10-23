@@ -243,6 +243,7 @@ private:
     void close_queues() noexcept {
         ai_frames_.close();
         encoded_packets_.close();
+        detections_.close();
     }
 
     void join_threads() noexcept {
@@ -350,11 +351,12 @@ private:
 
     void overlay_loop() {
         uint64_t applied_pts = 0;
+        uint64_t detection_generation = 0;
         bool applied = false;
         bool visible = false;
+        const auto result_ttl = std::chrono::milliseconds(config_.result_ttl_ms);
         while (running_.load()) {
-            const auto result = detections_.latest(
-                std::chrono::milliseconds(config_.result_ttl_ms));
+            const auto result = detections_.latest(result_ttl);
             if (result && (!applied || result->pts_us != applied_pts)) {
                 auto boxes = scale_boxes(*result, config_.output_width(),
                                          config_.output_height());
@@ -382,7 +384,25 @@ private:
             } else if (!result) {
                 applied = false;
             }
-            if (!interruptible_delay(20)) return;
+
+            // AI publishes at only a few FPS. Sleep until the next result
+            // instead of polling 50 times/s, but still wake exactly when the
+            // current result reaches its TTL so stale boxes are cleared.
+            auto wait = std::chrono::milliseconds(1000);
+            if (result) {
+                const auto expires = result->completed_at + result_ttl;
+                const auto now = Clock::now();
+                if (expires <= now) {
+                    wait = std::chrono::milliseconds(0);
+                } else {
+                    const auto remaining_us = duration_us(expires - now);
+                    wait = std::chrono::milliseconds((remaining_us + 999) / 1000);
+                }
+            }
+            if (!detections_.wait_for_change(detection_generation, wait) &&
+                !running_.load()) {
+                return;
+            }
         }
     }
 

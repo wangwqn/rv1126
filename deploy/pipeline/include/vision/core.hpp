@@ -262,6 +262,7 @@ public:
         std::shared_ptr<const Detection> retired;
         {
             std::lock_guard<std::mutex> lock(mutex_);
+            if (closed_) return false;
             if (!history_.empty() && incoming->pts_us < history_.back()->pts_us) {
                 return false;
             }
@@ -275,8 +276,35 @@ public:
                 }
                 history_.push_back(std::move(incoming));
             }
+            ++generation_;
         }
+        updated_.notify_all();
         return true;
+    }
+
+    // Wait without polling until an accepted publish changes the immutable
+    // history. The generation also catches equal-PTS replacements. Shutdown
+    // returns false immediately so an OSD worker cannot delay Pipeline::stop.
+    bool wait_for_change(std::uint64_t& observed_generation,
+                         std::chrono::milliseconds timeout) {
+        if (timeout.count() < 0) return false;
+        std::unique_lock<std::mutex> lock(mutex_);
+        if (!updated_.wait_for(lock, timeout, [this, observed_generation] {
+                return closed_ || generation_ != observed_generation;
+            })) {
+            return false;
+        }
+        if (closed_) return false;
+        observed_generation = generation_;
+        return true;
+    }
+
+    void close() noexcept {
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            closed_ = true;
+        }
+        updated_.notify_all();
     }
 
     std::shared_ptr<const Detection> select(
@@ -320,7 +348,10 @@ public:
 private:
     const std::size_t capacity_;
     mutable std::mutex mutex_;
+    std::condition_variable updated_;
     std::deque<std::shared_ptr<const Detection>> history_;
+    std::uint64_t generation_ = 0;
+    bool closed_ = false;
 };
 
 // Convert model/input coordinates to the main NV12 image. Rectangles use
