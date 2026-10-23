@@ -39,9 +39,12 @@ inline void decode_head(const float* values, int grid, int classes, bool nhwc,
     }
 }
 
-inline std::vector<vision::Box> nms(std::vector<vision::Box> boxes, float threshold = .45f) {
+inline void nms_into(std::vector<vision::Box>& boxes,
+                     std::vector<vision::Box>& kept,
+                     float threshold = .45f) {
     std::sort(boxes.begin(), boxes.end(), [](const vision::Box& a, const vision::Box& b) { return a.score > b.score; });
-    std::vector<vision::Box> kept;
+    kept.clear();
+    kept.reserve(std::min<std::size_t>(100, boxes.size()));
     for (const auto& b : boxes) {
         bool suppress = false;
         for (const auto& a : kept) {
@@ -55,6 +58,11 @@ inline std::vector<vision::Box> nms(std::vector<vision::Box> boxes, float thresh
         if (!suppress) kept.push_back(b);
         if (kept.size() >= 100) break;
     }
+}
+
+inline std::vector<vision::Box> nms(std::vector<vision::Box> boxes, float threshold = .45f) {
+    std::vector<vision::Box> kept;
+    nms_into(boxes, kept, threshold);
     return kept;
 }
 } // namespace object_detection

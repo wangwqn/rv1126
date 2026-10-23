@@ -25,6 +25,13 @@ private:
     std::array<rknn_tensor_attr, 3> outputs_{};
     std::array<int, 3> grids_{};
     std::array<std::array<float, 6>, 3> anchors_{};
+    // infer() is synchronous and called by one AI worker. Keep its scratch
+    // storage here so every frame does not allocate the letterbox image and
+    // repeatedly grow the decoded-candidate array.
+    cv::Mat input_;
+    int input_source_width_ = 0;
+    int input_source_height_ = 0;
+    std::vector<vision::Box> candidates_;
 };
 
 class LabelPainter {

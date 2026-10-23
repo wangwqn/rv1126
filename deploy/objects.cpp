@@ -89,6 +89,8 @@ Model::Model(const std::string& path, const std::string& metadata, float thresho
                 anchors_[i][2 * a + xy] = v;
             }
         }
+        input_ = cv::Mat(size_, size_, CV_8UC3, cv::Scalar(114, 114, 114));
+        candidates_.reserve(256);
     } catch (...) { rknn_destroy(context_); initialized_ = false; throw; }
 }
 Model::~Model() { if (initialized_) rknn_destroy(context_); }
@@ -98,25 +100,32 @@ vision::Detection Model::infer(const cv::Mat& rgb) {
     const double gain = std::min(double(size_) / rgb.cols, double(size_) / rgb.rows);
     const int w = int(std::nearbyint(rgb.cols * gain)), h = int(std::nearbyint(rgb.rows * gain));
     const int left = (size_ - w) / 2, top = (size_ - h) / 2;
-    cv::Mat input(size_, size_, CV_8UC3, cv::Scalar(114, 114, 114));
-    cv::Mat roi = input(cv::Rect(left, top, w, h));
+    if (rgb.cols != input_source_width_ || rgb.rows != input_source_height_) {
+        // A changed aspect ratio can expose pixels that belonged to the old
+        // ROI, so restore the complete letterbox background only then.
+        input_.setTo(cv::Scalar(114, 114, 114));
+        input_source_width_ = rgb.cols;
+        input_source_height_ = rgb.rows;
+    }
+    cv::Mat roi = input_(cv::Rect(left, top, w, h));
     cv::resize(rgb, roi, roi.size(), 0, 0, cv::INTER_LINEAR);
     rknn_input tensor{};
-    tensor.index = 0; tensor.buf = input.data; tensor.size = size_ * size_ * 3;
+    tensor.index = 0; tensor.buf = input_.data; tensor.size = size_ * size_ * 3;
     tensor.type = RKNN_TENSOR_UINT8; tensor.fmt = RKNN_TENSOR_NHWC; tensor.pass_through = 0;
     checked(rknn_inputs_set(context_, 1, &tensor), "rknn_inputs_set");
     checked(rknn_run(context_, nullptr), "rknn_run");
     OutputLease output(context_);
-    std::vector<vision::Box> candidates;
+    candidates_.clear();
     for (unsigned i = 0; i < 3; ++i) {
         if (!output.buffers[i].buf || output.buffers[i].size < outputs_[i].n_elems * sizeof(float))
             throw std::runtime_error("Truncated RKNN output");
         decode_head(static_cast<const float*>(output.buffers[i].buf), grids_[i], names_.size(),
                     outputs_[i].fmt == RKNN_TENSOR_NHWC, anchors_[i], size_, threshold_,
-                    rgb.cols, rgb.rows, w, h, left, top, candidates);
+                    rgb.cols, rgb.rows, w, h, left, top, candidates_);
     }
     vision::Detection result;
-    result.width = rgb.cols; result.height = rgb.rows; result.boxes = nms(std::move(candidates));
+    result.width = rgb.cols; result.height = rgb.rows;
+    nms_into(candidates_, result.boxes);
     result.completed_at = std::chrono::steady_clock::now();
     return result;
 }

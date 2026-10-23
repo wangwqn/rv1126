@@ -60,6 +60,10 @@ IMX415 1944×1097 RAW12、有效裁剪 1920×1080、30 FPS 模式，TNR 仍由�
 逐样本验证的 OSD 等待 P99 从约 20.0 ms 降至约 0.64 ms，视频 DMA-BUF、VENC
 和 RTSP 数据路径未改变。
 
+1.5.2 复用 RKNN 前的 letterbox 图像和候选框工作区，避免 AI 线程每帧重复
+申请输入图内存。真机同时段 A/B 中 `ai.infer` P99 从 17.827 ms 降至
+17.567 ms；这是软件预/后处理小幅优化，不代表 RKNN/NPU 单独耗时降低。
+
 局域网播放默认选择 RTP/UDP，RTSP 控制连接仍使用 TCP 8554。FFplay 示例：
 
 ```bash

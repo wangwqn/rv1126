@@ -23,6 +23,13 @@ if(BUILD_TESTING)
     target_compile_options(core_tests PRIVATE -Wall -Wextra -Wpedantic)
     target_link_libraries(core_tests PRIVATE Threads::Threads)
     add_test(NAME core_tests COMMAND core_tests)
+
+    add_executable(decode_tests ../test_decode.cpp)
+    target_include_directories(decode_tests PRIVATE
+        "${PROJECT_SOURCE_DIR}/.."
+        "${PROJECT_SOURCE_DIR}/include")
+    target_compile_options(decode_tests PRIVATE -Wall -Wextra -Wpedantic)
+    add_test(NAME decode_tests COMMAND decode_tests)
 endif()
 
 if(NOT CMAKE_CONFIGURATION_TYPES AND NOT CMAKE_BUILD_TYPE)
@@ -32,7 +39,7 @@ endif()
 # A host-only configure must not inspect or link any target SDK artifact.
 if(NOT RK_VISION_BUILD_DEVICE)
     if(BUILD_TESTING)
-        message(STATUS "RK device application disabled; only the portable core_tests target is enabled")
+        message(STATUS "RK device application disabled; only portable host tests are enabled")
     else()
         message(STATUS "RK device application and tests are disabled; no build targets were requested")
     endif()

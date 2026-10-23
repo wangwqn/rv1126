@@ -17,6 +17,9 @@ int main() {
     auto duplicate = boxes[0]; duplicate.score = .8; boxes.push_back(duplicate);
     duplicate.class_id = 0; boxes.push_back(duplicate);
     assert(object_detection::nms(boxes).size() == 2);
+    std::vector<vision::Box> kept;
+    object_detection::nms_into(boxes, kept);
+    assert(kept.size() == 2);
     std::vector<float> nhwc(data.size());
     for (int c = 0; c < channels; ++c) for (int p = 0; p < plane; ++p) nhwc[p * channels + c] = data[c * plane + p];
     boxes.clear();
