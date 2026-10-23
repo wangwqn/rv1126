@@ -32,9 +32,23 @@ sha256sum -c SHA256SUMS
 
 ```bash
 bash scripts/deploy_release.sh
-adb shell
-cd /root/rv1126_objects
-./rkmedia_object_detection_rtsp --rotation 270 --threshold 0.35
+adb shell '/root/rv1126_objects/rv1126-object start'
+adb shell '/root/rv1126_objects/rv1126-object status'
+```
+
+部署使用隐藏暂存目录：全部文件上传后先在板端执行 SHA256 校验，通过后
+才用同文件系统的 `rename` 替换正式文件，因此中断上传不会把主程序
+截断为空文件。同名旧文件保留为 `.previous` 硬链接，且主可执行文件最后替换。
+已运行进程不会被部署脚本中断；执行 `rv1126-object restart` 后才切换到新 inode。
+
+其他管理命令：
+
+```bash
+adb shell '/root/rv1126_objects/rv1126-object stop'
+adb shell '/root/rv1126_objects/rv1126-object restart'
+adb shell 'tail -100 /tmp/rv1126-object.log'
+# 可选：安装 Buildroot 开机服务
+adb shell '/root/rv1126_objects/rv1126-object install-autostart'
 ```
 
 主流地址为 `rtsp://开发板IP:8554/live/main_stream`，子流地址为

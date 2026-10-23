@@ -1,0 +1,102 @@
+#!/bin/sh
+set -eu
+
+APP_DIR=${RV1126_APP_DIR:-/root/rv1126_objects}
+APP="$APP_DIR/rkmedia_object_detection_rtsp"
+PID_FILE=${RV1126_PID_FILE:-/var/run/rv1126-object.pid}
+LOG_FILE=${RV1126_LOG_FILE:-/tmp/rv1126-object.log}
+
+running_pid() {
+    [ -s "$PID_FILE" ] || return 1
+    pid=$(cat "$PID_FILE" 2>/dev/null || true)
+    case "$pid" in *[!0-9]*|'') return 1 ;; esac
+    [ -d "/proc/$pid" ] || return 1
+    command_line=$(tr '\000' ' ' <"/proc/$pid/cmdline" 2>/dev/null || true)
+    case "$command_line" in *"$APP"*) printf '%s\n' "$pid" ;; *) return 1 ;; esac
+}
+
+start_service() {
+    if pid=$(running_pid); then
+        echo "Already running: pid=$pid"
+        return 0
+    fi
+    rm -f "$PID_FILE"
+    [ -x "$APP" ] || { echo "Missing executable: $APP" >&2; return 1; }
+    [ -s "$APP_DIR/objects.rknn" ] || { echo "Missing model: $APP_DIR/objects.rknn" >&2; return 1; }
+    if [ "$#" -eq 0 ]; then
+        set -- --sensor-mode 1080p --rotation 270 --threshold 0.35
+    fi
+    cd "$APP_DIR"
+    start-stop-daemon -S -b -m -p "$PID_FILE" -x "$APP" -- "$@" \
+        >"$LOG_FILE" 2>&1
+    sleep 2
+    if pid=$(running_pid); then
+        echo "Started: pid=$pid log=$LOG_FILE"
+        return 0
+    fi
+    echo "Start failed; log follows:" >&2
+    tail -80 "$LOG_FILE" >&2 || true
+    return 1
+}
+
+stop_service() {
+    if ! pid=$(running_pid); then
+        rm -f "$PID_FILE"
+        echo "Not running"
+        return 0
+    fi
+    kill -TERM "$pid"
+    count=0
+    while [ -d "/proc/$pid" ] && [ "$count" -lt 20 ]; do
+        sleep 1
+        count=$((count + 1))
+    done
+    if [ -d "/proc/$pid" ]; then
+        echo "Graceful stop timed out; sending KILL" >&2
+        kill -KILL "$pid" 2>/dev/null || true
+    fi
+    rm -f "$PID_FILE"
+    echo "Stopped"
+}
+
+status_service() {
+    version=unknown
+    [ ! -s "$APP_DIR/VERSION" ] || version=$(tr -d '[:space:]' <"$APP_DIR/VERSION")
+    if pid=$(running_pid); then
+        echo "Running: version=$version pid=$pid app=$APP log=$LOG_FILE"
+        return 0
+    fi
+    echo "Stopped: version=$version"
+    return 3
+}
+
+command=${1:-}
+[ "$#" -eq 0 ] || shift
+case "$command" in
+    start) start_service "$@" ;;
+    stop) stop_service ;;
+    restart) stop_service; start_service "$@" ;;
+    status) status_service ;;
+    foreground)
+        cd "$APP_DIR"
+        if [ "$#" -eq 0 ]; then
+            set -- --sensor-mode 1080p --rotation 270 --threshold 0.35
+        fi
+        exec "$APP" "$@"
+        ;;
+    install-autostart)
+        script=$(readlink -f "$0")
+        ln -sfn "$script" /etc/init.d/S99rv1126-object
+        echo "Installed boot service: /etc/init.d/S99rv1126-object"
+        ;;
+    remove-autostart)
+        if [ -L /etc/init.d/S99rv1126-object ]; then
+            rm /etc/init.d/S99rv1126-object
+        fi
+        echo "Removed boot service"
+        ;;
+    *)
+        echo "Usage: $0 {start|stop|restart|status|foreground|install-autostart|remove-autostart} [program options...]" >&2
+        exit 2
+        ;;
+esac

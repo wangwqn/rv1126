@@ -13,7 +13,7 @@
 ```bash
 git clone git@github.com:wangwqn/rv1126.git
 cd rv1126
-git checkout v1.5.2
+git checkout v1.6.0
 bash scripts/verify_checkout.sh
 ```
 
@@ -33,7 +33,8 @@ P50/P95/P99/max 统计；指标边界、真机结果和一键抓取方法见
 
 ```bash
 bash scripts/deploy_release.sh
-adb shell 'cd /root/rv1126_objects && ./rkmedia_object_detection_rtsp --rotation 270 --threshold 0.35'
+adb shell '/root/rv1126_objects/rv1126-object start'
+adb shell '/root/rv1126_objects/rv1126-object status'
 ```
 
 预编译程序依赖当前板载 RKMedia、RGA、RKNN、RKAiq 和 C/C++ 运行库 ABI；不同 BSP
@@ -133,8 +134,13 @@ bash scripts/push_device.sh
 ```
 
 工具链默认 SDK 在 `/home/alientek/rv1126_sdk`。上传目标为 `/root/rv1126_objects/`。
-上传脚本不停止现有服务、不改系统运行库、不设置开机启动。
-如已有同名新程序正在运行，先在其启动终端按 Ctrl+C，再上传。
+上传脚本不停止现有服务、不改系统运行库、不默认设置开机启动。文件先上传到
+唯一暂存目录，通过远端 SHA256 校验后再原子替换；现有进程仍持有旧 inode，
+不会因替换磁盘文件被强制停止。要让新进程生效，执行：
+
+```bash
+adb shell '/root/rv1126_objects/rv1126-object restart'
+```
 
 先验证一张图片（需上传自己的 `test.jpg`）：
 
@@ -147,6 +153,15 @@ adb pull /root/rv1126_objects/result.jpg ./artifacts/device-result.jpg
 ```
 
 确认输出后启动视频。原人脸程序和新程序不能同时占用摄像头或 8554 端口。
+推荐使用板端管理脚本：
+
+```bash
+adb shell '/root/rv1126_objects/rv1126-object start'
+adb shell '/root/rv1126_objects/rv1126-object status'
+adb shell '/root/rv1126_objects/rv1126-object stop'
+```
+
+需要前台日志时仍可以手工运行：
 
 ```bash
 adb shell

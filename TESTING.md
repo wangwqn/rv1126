@@ -94,14 +94,23 @@ adb pull /root/rv1126_objects/test-result.jpg ./test-result.jpg
 
 ## 7. 需要手动重启时
 
-先停止本次后台服务（同时核对 PID 文件和可执行文件，避免误停其他程序）：
+发布包已包含板端管理脚本，它会同时校验 PID 文件和 `/proc/<pid>/cmdline`，
+避免 PID 复用时误停其他进程：
 
 ```bash
-adb shell 'start-stop-daemon -K -p /tmp/rkvision-objects.pid -x /root/rv1126_objects/rkmedia_object_detection_rtsp -s INT'
-adb shell 'netstat -lnt 2>/dev/null | grep :8554'
+adb shell '/root/rv1126_objects/rv1126-object status'
+adb shell '/root/rv1126_objects/rv1126-object restart'
+adb shell 'tail -100 /tmp/rv1126-object.log'
 ```
 
-确认 8554 不再监听后，前台运行：
+默认参数是 1080p 传感器模式、旋转 270 度和阈值 0.35。如要安装为 Buildroot
+开机服务（可选，部署脚本不会自动开启）：
+
+```bash
+adb shell '/root/rv1126_objects/rv1126-object install-autostart'
+```
+
+需要实时查看前台日志时，先 `stop`，再执行：
 
 ```bash
 adb shell

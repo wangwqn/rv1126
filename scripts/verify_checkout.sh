@@ -10,6 +10,8 @@ required=(
   "TESTING.md"
   "handoff/VERSION_CONTROL.md"
   "scripts/test_rtsp_udp.sh"
+  "scripts/lib/atomic_adb_deploy.sh"
+  "scripts/deploy_release.sh"
   "15_rkmedia_rockx_face_detection_rtsp/CMakeLists.txt"
   "deploy/pipeline/CMakeLists.txt"
   "deploy/pipeline/include/vision/config.hpp"
@@ -22,6 +24,8 @@ required=(
   "artifacts/objects.onnx"
   "artifacts/objects-rv1126.rknn"
   "release/rv1126/SHA256SUMS"
+  "release/rv1126/VERSION"
+  "release/rv1126/objects/rv1126-object"
 )
 
 for relative_path in "${required[@]}"; do
@@ -34,6 +38,11 @@ done
 version="$(tr -d '[:space:]' < "$project_dir/VERSION")"
 if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
   echo "Invalid VERSION: expected major.minor.patch, got '$version'" >&2
+  exit 1
+fi
+release_version="$(tr -d '[:space:]' < "$project_dir/release/rv1126/VERSION")"
+if [[ "$release_version" != "$version" ]]; then
+  echo "Release VERSION differs from project VERSION: $release_version != $version" >&2
   exit 1
 fi
 

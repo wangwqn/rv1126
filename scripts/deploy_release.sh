@@ -3,22 +3,23 @@ set -euo pipefail
 
 project_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 release_dir="$project_dir/release/rv1126"
+source "$project_dir/scripts/lib/atomic_adb_deploy.sh"
 
 (
   cd "$release_dir"
   sha256sum -c SHA256SUMS
 )
 
-adb get-state
-adb shell 'mkdir -p /root/rv1126_objects'
-adb push "$release_dir/objects/object_image" \
-  "$release_dir/objects/rkmedia_object_detection_rtsp" \
-  "$release_dir/objects/objects.rknn" \
-  "$release_dir/objects/objects.json" \
-  "$release_dir/objects/labels.png" \
-  /root/rv1126_objects/
-adb shell 'chmod +x /root/rv1126_objects/object_image /root/rv1126_objects/rkmedia_object_detection_rtsp'
+version=$(tr -d '[:space:]' <"$release_dir/VERSION")
+atomic_adb_deploy /root/rv1126_objects "v$version" \
+  "$release_dir/VERSION|VERSION|0644" \
+  "$release_dir/objects/objects.rknn|objects.rknn|0644" \
+  "$release_dir/objects/objects.json|objects.json|0644" \
+  "$release_dir/objects/labels.png|labels.png|0644" \
+  "$release_dir/objects/object_image|object_image|0755" \
+  "$release_dir/objects/rv1126-object|rv1126-object|0755" \
+  "$release_dir/objects/rkmedia_object_detection_rtsp|rkmedia_object_detection_rtsp|0755"
 
-echo "Upload complete. Start it on the board with:"
-echo "  cd /root/rv1126_objects"
-echo "  ./rkmedia_object_detection_rtsp --rotation 270 --threshold 0.35"
+echo "Upload complete. Manage it on the board with:"
+echo "  /root/rv1126_objects/rv1126-object start"
+echo "  /root/rv1126_objects/rv1126-object status"
