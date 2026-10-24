@@ -36,6 +36,8 @@ required=(
   "artifacts/objects23-rv1126.rknn"
   "artifacts/objects23-rv1126.json"
   "artifacts/labels23.png"
+  "artifacts/device-objects23-result.jpg"
+  "artifacts/device-objects23-live.jpg"
   "scripts/push_objects23_candidate.sh"
   "release/rv1126/SHA256SUMS"
   "release/rv1126/VERSION"

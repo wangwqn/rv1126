@@ -92,9 +92,10 @@ bash scripts/test_rtsp_av.sh <开发板当前IP> 10
 现版本置信度阈值 0.35；不要把降低阈值后出现更多框当成精度提高。
 当前已观察到杯子/瓶子混淆，书籍和部分水果较弱，需继续训练改进。
 
-23类候选还需测试：人、背包、手提包、碗、三明治、椅子、沙发、盆栽、
-餐桌、遥控器、时钟和剪刀。执行 `bash scripts/push_objects23_candidate.sh`
-只会上传到 `/root/rv1126_objects23_candidate`，不会覆盖已验证的默认服务。
+23类候选已完成板端公开图片和短时实时流验证，但还需用实物逐类测试：人、背包、
+手提包、碗、三明治、椅子、沙发、盆栽、餐桌、遥控器、时钟和剪刀。
+执行 `bash scripts/push_objects23_candidate.sh` 只会上传到
+`/root/rv1126_objects23_candidate`，不会覆盖已验证的默认服务。
 
 ## 7. 单张图片隔离测试
 
@@ -107,6 +108,15 @@ adb pull /root/rv1126_objects/test-result.jpg ./test-result.jpg
 ```
 
 预期能看到笔记本电脑、鼠标、键盘的中文框图。本次已有结果在 `artifacts/device-initial-result.jpg`。
+
+23类候选的已验证命令和结果：
+
+```bash
+adb shell 'cd /root/rv1126_objects23_candidate && ./object_image objects.rknn objects.json labels.png test.jpg result.jpg 0.25'
+adb pull /root/rv1126_objects23_candidate/result.jpg artifacts/device-objects23-result.jpg
+```
+
+本次板端检出人、椅子、笔记本电脑、显示器/电视和杯子，总耗时 28.391 ms。
 
 ## 8. 需要手动重启时
 

@@ -3,8 +3,9 @@
 This directory contains the RV1126 INT8 model, metadata and Chinese label atlas
 for the expanded 23-class detector. It is deliberately separate from
 `release/rv1126/objects/`: the existing 11-class release has board validation,
-whereas this candidate has passed host training, ONNX checks and RKNN Toolkit
-1.7.5 conversion but has not yet run on the currently disconnected board.
+whereas this candidate has passed host training, ONNX checks, RKNN Toolkit
+1.7.5 conversion, an RV1126 still-image test and a short live-pipeline test.
+Per-class physical-object accuracy and long-duration validation remain pending.
 
 The first 11 class IDs are unchanged. New IDs 11-22 are person, backpack,
 handbag, bowl, sandwich, chair, couch, potted plant, dining table, remote,
@@ -24,5 +25,8 @@ adb shell 'cd /root/rv1126_objects23_candidate && ./object_image objects.rknn ob
 adb pull /root/rv1126_objects23_candidate/result.jpg artifacts/device-objects23-result.jpg
 ```
 
-Only after the still-image result and live NPU pipeline pass should these three
-assets replace the corresponding files in `release/rv1126/objects/`.
+The verified still-image result is `artifacts/device-objects23-result.jpg`.
+The model detected person, chair, laptop, monitor/TV and cup in 28.391 ms total
+preprocess, inference and postprocess time. The warmed main and sub streams each
+decoded 300 frames in 10 seconds without errors. Keep this package separate
+until physical-object accuracy and long-duration tests also pass.

@@ -14,8 +14,9 @@
 程序；它依赖开发板 rootfs 中已有的 RockX 模型和运行库。两个程序不能同时占用摄像头
 和 TCP 8554 端口。
 
-`candidates/objects23/` 是已完成主机训练、ONNX检查和RKNN转换的23类候选。
-它尚未完成RV1126真机验证，不会被 `deploy_release.sh` 部署为默认模型。
+`candidates/objects23/` 是已完成主机训练、ONNX检查、RKNN转换、RV1126单图和
+短时实时流验证的23类候选。由于逐类精度和长稳回归仍未完成，它不会被
+`deploy_release.sh` 部署为默认模型。
 
 ## 校验
 

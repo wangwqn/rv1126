@@ -65,11 +65,12 @@ IMAGE_TYPE_BGR888 -> RK_FORMAT_RGB_888
 
 “电脑”目前只对应 COCO `laptop`，不包含台式机机箱。不要只改 `classes.json` 就声称增加了类别；类别改变需要重新标注、训练、导出、量化并更新中文标签图集。
 
-v1.8.1 另有一个尚未替换稳定发布的 23 类候选：保持上述 0–10 不变，追加
+v1.8.2 另有一个尚未替换稳定发布的 23 类候选：保持上述 0–10 不变，追加
 person、backpack、handbag、bowl、sandwich、chair、couch、potted_plant、
 dining_table、remote、clock、scissors。配置在 `config/classes-v2.json`，候选包在
-`release/rv1126/candidates/objects23/`。它已完成主机训练、ONNX 数值检查和
-RKNN Toolkit 1.7.5 转换；由于开发板当时离线，不能宣称已经通过 NPU 或实时流验证。
+`release/rv1126/candidates/objects23/`。它已完成主机训练、ONNX 数值检查、
+RKNN Toolkit 1.7.5 转换、RV1126 单图和短时实时流验证。板端单图总耗时
+28.391 ms；预热后主、子流各 300 帧/10 秒。逐类实物精度与长稳测试仍未完成。
 
 ### 数据
 

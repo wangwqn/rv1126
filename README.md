@@ -14,7 +14,7 @@
 ```bash
 git clone git@github.com:wangwqn/rv1126.git
 cd rv1126
-git checkout v1.8.1
+git checkout v1.8.2
 bash scripts/verify_checkout.sh
 ```
 
@@ -48,8 +48,9 @@ adb shell '/root/rv1126_objects/rv1126-object health'
 
 23 类候选模型保持以上 ID 0–10 不变，并追加：人、背包、手提包、碗、三明治、
 椅子、沙发、盆栽、餐桌、遥控器、时钟、剪刀。它由 `config/classes-v2.json`
-定义，已经完成主机训练、ONNX 检查和 RKNN 转换，但尚未完成 RV1126 真机回归，
-因此存放在 `release/rv1126/candidates/objects23/`，不会自动覆盖稳定模型。
+定义，已经完成主机训练、ONNX 检查、RKNN 转换、板端单图和短时实时流验证。
+由于精度和长稳测试仍需补充，它继续存放在 `release/rv1126/candidates/objects23/`，
+不会自动覆盖稳定模型。
 “电脑”目前仍指 COCO 的笔记本电脑，不包含台式机机箱。改变类别后必须重新准备
 标注、训练、导出、量化并生成标签，不能只改 JSON 或标签图片。
 
