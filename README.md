@@ -14,7 +14,7 @@
 ```bash
 git clone git@github.com:wangwqn/rv1126.git
 cd rv1126
-git checkout v1.8.6
+git checkout v1.8.7
 bash scripts/verify_checkout.sh
 ```
 
@@ -61,7 +61,8 @@ adb shell '/root/rv1126_objects/rv1126-object health'
 
 实时管线默认将 IMX415 切换到 1944×1097 RAW12、裁剪 1920×1080、30 FPS，
 因此 TNR 直接处理 1080P 而不再先处理 4K。VI 使用 V4L2 DMABUF，主、子视频
-分别经 RGA NV12 硬件通道直绑 VENC；第三个低分辨率 RGA BGR 通道只供 RKNN。
+分别经 RGA NV12 硬件通道直绑 VENC；第三个低分辨率 RGA BGR 通道只供 RKNN，
+并在 RGA 输入端按 `ai-fps` 硬件抽帧，默认只转换 3 FPS，不再转换后丢弃其余帧。
 主流不再转成整帧 RGB，也不再用 OpenCV 修改 1080P 像素。中文名和置信度只在
 AI 结果更新时生成小型透明 ARGB 标签条，再由 RGA 与三条硬件边组成标注框。
 RV1126 旧 RGA API 只有 8 个区域，因此实时显示最多 2 个带名称框，更多结果计入

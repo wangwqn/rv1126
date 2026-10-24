@@ -69,6 +69,10 @@ public:
     RgaChannel(int channel, int width, int height, IMAGE_TYPE_E output, int rotation, int buffers);
     ~RgaChannel();
     MPP_CHN_S endpoint() const;
+    // Drop excess input frames before the RGA transform. This is used by the
+    // AI branch so a low inference rate does not waste bandwidth converting
+    // every video frame to BGR.
+    void limit_input_rate(int input_fps, int output_fps);
 private:
     int channel_;
 };

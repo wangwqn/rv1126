@@ -119,10 +119,15 @@ public:
             sub_rga_.reset(new RgaChannel(1, config_.sub_width, config_.sub_height,
                                           IMAGE_TYPE_NV12, config_.rotation,
                                           config_.pool_buffers));
-            if (config_.ai)
+            if (config_.ai) {
                 ai_rga_.reset(new RgaChannel(2, config_.sub_width, config_.sub_height,
                                              IMAGE_TYPE_BGR888, config_.rotation,
                                              config_.pool_buffers));
+                // Apply the rate limit at the RGA input. RKMedia drops frames
+                // in Flow::SendInput(), before allocating/converting BGR, so
+                // a 3 FPS detector no longer converts all 30 video FPS.
+                ai_rga_->limit_input_rate(config_.fps, config_.ai_fps);
+            }
             main_venc_.reset(new VencChannel(0, config_.output_width(),
                                               config_.output_height(),
                                               config_.output_width(),
@@ -335,7 +340,6 @@ private:
 
     void ai_capture_loop() {
         auto last_frame = Clock::now();
-        int ai_budget = config_.fps - config_.ai_fps;
         while (running_.load()) {
             auto source = get_buffer(RK_ID_RGA, 2, 100);
             if (!source) {
@@ -347,15 +351,11 @@ private:
             last_frame = ready_at;
             observe_pts_age(LatencyMetric::ai_rga_age, ai_rga_age_, source->pts(), ready_at);
             ++ai_source_;
-            ai_budget += config_.ai_fps;
-            if (ai_budget >= config_.fps) {
-                ai_budget -= config_.fps;
-                ++ai_sampled_;
-                AiFrame sampled;
-                sampled.frame = std::move(source);
-                sampled.queued_at = Clock::now();
-                if (!ai_frames_.push(std::move(sampled))) return;
-            }
+            ++ai_sampled_;
+            AiFrame sampled;
+            sampled.frame = std::move(source);
+            sampled.queued_at = Clock::now();
+            if (!ai_frames_.push(std::move(sampled))) return;
         }
     }
 

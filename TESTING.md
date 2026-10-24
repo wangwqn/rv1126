@@ -150,7 +150,8 @@ adb shell '/root/rv1126_objects/rv1126-object restart'
 adb shell 'tail -100 /tmp/rv1126-object.log'
 ```
 
-默认参数是 1080p 传感器模式、旋转 270 度和阈值 0.35。如要安装为 Buildroot
+正式管理脚本默认是4K全视场传感器模式、29 FPS、旋转270度和阈值0.25；程序
+直接运行时的内建默认仍是1080p传感器模式、30 FPS和阈值0.35。如要安装为Buildroot
 开机服务（可选，部署脚本不会自动开启）：
 
 ```bash
@@ -184,6 +185,11 @@ adb shell 'cat /proc/rkispp0'
 
 应看到 1920×1080 输入和 `TNR ON (mode: 2to1)`。需要与旧模式对照时添加
 `--sensor-mode 4k`；当前版本没有 `--disable-tnr` 参数。
+
+v1.8.7开始，AI专用RGA2在输入端直接由视频帧率限制到 `--ai-fps`。日志中
+`ai(source=..., sampled=...)` 两项应基本相等，并按默认约3次/秒增长；如果仍按
+29/30次/秒增长，说明运行的不是当前二进制。全视场29 FPS验证记录见
+`artifacts/ai-rga-rate-limit-validation-20261025.md`。
 
 部署新版本并等待摄像头管线通过健康检查：
 

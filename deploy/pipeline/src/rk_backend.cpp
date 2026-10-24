@@ -316,6 +316,15 @@ RgaChannel::RgaChannel(int channel, int width, int height, IMAGE_TYPE_E output, 
 }
 RgaChannel::~RgaChannel() { warn_rk(RK_MPI_RGA_DestroyChn(channel_), "RGA DestroyChn"); }
 MPP_CHN_S RgaChannel::endpoint() const { return {RK_ID_RGA, 0, channel_}; }
+void RgaChannel::limit_input_rate(int input_fps, int output_fps) {
+    MPP_FPS_ATTR_S rate{};
+    rate.s32FpsInNum = input_fps;
+    rate.s32FpsInDen = 1;
+    rate.s32FpsOutNum = output_fps;
+    rate.s32FpsOutDen = 1;
+    check_rk(RK_MPI_SYS_SetFrameRate(RK_ID_RGA, channel_, &rate),
+             "RGA SetFrameRate");
+}
 Binding::Binding(MPP_CHN_S source, MPP_CHN_S destination) : source_(source), destination_(destination) {
     check_rk(RK_MPI_SYS_Bind(&source_, &destination_), "SYS Bind");
 }

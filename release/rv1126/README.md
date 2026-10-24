@@ -77,6 +77,11 @@ ISPP `ErrCnt` 和 TNR。宿主机可执行 `bash scripts/rollback_device.sh` 恢
 可用 `--sensor-mode 4k` 回退旧模式，当前发布程序没有 `--disable-tnr` 参数。
 8 Mbps 在板载旧版 `librtsp` 上仍是已知不稳定配置。
 
+AI专用RGA通道在输入端使用RKMedia帧率控制，只将默认3 FPS送入NV12→BGR转换，
+不再以视频帧率转换后由应用丢弃。全视场完整功能真机短测中，应用CPU占四核总容量
+由26.30%降至19.65%，29 FPS保持 `pts_gap=0`。测试时SoC已达84°C且热管理介入，
+30 FPS仍不稳定；要重新验收30 FPS，必须先改善散热并按同一测试流程复测。
+
 分段时延诊断可在启动命令后添加 `--latency-stats`。程序每 5 秒报告 AI、OSD、
 主/子编码输出和 RTSP 发送路径的滚动 P50/P95/P99/max；正常运行默认关闭。
 完整指标边界和抓取脚本见 `deploy/pipeline/docs/runtime-latency.md`。
