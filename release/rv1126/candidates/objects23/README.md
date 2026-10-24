@@ -28,6 +28,9 @@ adb shell '/root/rv1126_objects23_candidate/rv1126-object23 stop'
 This profile preserves the 3840×2160 active sensor area but measured
 29.83/29.80 FPS for concurrent main/sub clients. It is intentionally not an
 autostart service and does not replace the stable 1080p-sensor profile.
+Native 3840×2160 main-stream output was also tested at 6 Mbps with AI/OSD off;
+the board fell to roughly 53 ms per frame and the TCP stream was corrupted.
+That failed mode is documented but is not provided as a default profile.
 
 Then upload a test image and run:
 

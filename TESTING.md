@@ -130,6 +130,8 @@ adb shell '/root/rv1126_objects23_candidate/rv1126-object23 stop'
 
 它固定为4K传感器采集、1080p/360p输出，实测约29.8 FPS，不应作为严格30 FPS
 结果。与1080p传感器模式的性能对比见 `artifacts/full-fov-validation-20261024.md`。
+原始3840×2160主码流测试未通过，不应作为默认启动参数；失败详情见
+`artifacts/native-4k-output-validation-20261024.md`。
 
 ## 8. 需要手动重启时
 

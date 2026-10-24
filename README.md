@@ -14,7 +14,7 @@
 ```bash
 git clone git@github.com:wangwqn/rv1126.git
 cd rv1126
-git checkout v1.8.4
+git checkout v1.8.5
 bash scripts/verify_checkout.sh
 ```
 
@@ -164,6 +164,9 @@ cd /home/alientek/桌面/rv1126_object_training
 候选目录中的 `rv1126-object23 start` 默认采用 4K 传感器全视场采集，再由
 ISPP 输出 1920×1080 主流和 640×360 子流。该模式实测约 29.8 FPS，优先视场
 而不是严格 30 FPS；性能数据见 `artifacts/full-fov-validation-20261024.md`。
+不要将主流直接改成3840×2160：即使关闭AI/OSD、使用6 Mbps，真机ISPP仍只有
+约53 ms/帧，TCP码流同时出现H.264损坏和CSeq错误；失败基线见
+`artifacts/native-4k-output-validation-20261024.md`。
 
 再次训练同名目录时，上游会自动增加序号。微调已有本工程权重可用 `--weights .../best.pt`；
 这会重新创建优化器，不等同于断点恢复。包装器明确拒绝 `--resume`。
