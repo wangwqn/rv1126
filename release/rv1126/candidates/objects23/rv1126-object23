@@ -1,0 +1,34 @@
+#!/bin/sh
+set -eu
+
+MANAGER=${RV1126_BASE_MANAGER:-/root/rv1126_objects/rv1126-object}
+export RV1126_APP_DIR=${RV1126_APP_DIR:-/root/rv1126_objects23_candidate}
+export RV1126_PID_FILE=${RV1126_PID_FILE:-/var/run/rv1126-object23.pid}
+export RV1126_LOG_FILE=${RV1126_LOG_FILE:-/tmp/rv1126-object23.log}
+
+command=${1:-}
+if [ "$#" -eq 1 ]; then
+    case "$command" in
+        start|restart|foreground)
+            set -- "$command" \
+                --sensor-mode 4k \
+                --width 1920 --height 1080 \
+                --sub-width 640 --sub-height 360 \
+                --fps 30 --ai-fps 3 \
+                --bitrate 4000000 --sub-bitrate 600000 \
+                --pool-buffers 8 --packet-queue 8 \
+                --rotation 270 --threshold 0.25
+            ;;
+    esac
+fi
+
+if [ "$command" = "install-autostart" ] || [ "$command" = "remove-autostart" ]; then
+    echo "Candidate autostart is intentionally disabled; validate long-duration stability first." >&2
+    exit 2
+fi
+
+[ -x "$MANAGER" ] || {
+    echo "Missing base manager: $MANAGER" >&2
+    exit 1
+}
+exec "$MANAGER" "$@"

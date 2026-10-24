@@ -14,7 +14,7 @@
 ```bash
 git clone git@github.com:wangwqn/rv1126.git
 cd rv1126
-git checkout v1.8.3
+git checkout v1.8.4
 bash scripts/verify_checkout.sh
 ```
 
@@ -161,6 +161,9 @@ cd /home/alientek/桌面/rv1126_object_training
 
 开发板在线后可运行 `bash scripts/push_objects23_candidate.sh`，它会上传到
 `/root/rv1126_objects23_candidate/`，不会替换 `/root/rv1126_objects/`。
+候选目录中的 `rv1126-object23 start` 默认采用 4K 传感器全视场采集，再由
+ISPP 输出 1920×1080 主流和 640×360 子流。该模式实测约 29.8 FPS，优先视场
+而不是严格 30 FPS；性能数据见 `artifacts/full-fov-validation-20261024.md`。
 
 再次训练同名目录时，上游会自动增加序号。微调已有本工程权重可用 `--weights .../best.pt`；
 这会重新创建优化器，不等同于断点恢复。包装器明确拒绝 `--resume`。

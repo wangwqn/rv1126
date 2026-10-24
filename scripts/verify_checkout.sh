@@ -39,11 +39,16 @@ required=(
   "artifacts/device-objects23-result.jpg"
   "artifacts/device-objects23-live.jpg"
   "artifacts/board-validation-objects23-20261024.md"
+  "artifacts/full-fov-validation-20261024.md"
+  "artifacts/device-objects23-full-fov-4k-to-1080.jpg"
+  "artifacts/device-objects23-full-fov-live-20261024.jpg"
   "scripts/push_objects23_candidate.sh"
   "release/rv1126/SHA256SUMS"
   "release/rv1126/VERSION"
   "release/rv1126/objects/rv1126-object"
   "release/rv1126/candidates/objects23/SHA256SUMS"
+  "release/rv1126/candidates/objects23/rv1126-object23"
+  "release/rv1126/candidates/objects23/VERSION"
 )
 
 for relative_path in "${required[@]}"; do

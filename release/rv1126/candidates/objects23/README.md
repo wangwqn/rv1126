@@ -17,6 +17,18 @@ Upload without replacing the active release:
 bash scripts/push_objects23_candidate.sh
 ```
 
+Start the user-selected full-FOV profile (4K sensor input, 1080p/360p output):
+
+```bash
+adb shell '/root/rv1126_objects23_candidate/rv1126-object23 start'
+adb shell '/root/rv1126_objects23_candidate/rv1126-object23 health'
+adb shell '/root/rv1126_objects23_candidate/rv1126-object23 stop'
+```
+
+This profile preserves the 3840×2160 active sensor area but measured
+29.83/29.80 FPS for concurrent main/sub clients. It is intentionally not an
+autostart service and does not replace the stable 1080p-sensor profile.
+
 Then upload a test image and run:
 
 ```bash
@@ -28,5 +40,6 @@ adb pull /root/rv1126_objects23_candidate/result.jpg artifacts/device-objects23-
 The verified still-image result is `artifacts/device-objects23-result.jpg`.
 The model detected person, chair, laptop, monitor/TV and cup. Three consecutive
 board runs averaged 21.893 ms total preprocess, inference and postprocess time.
-Concurrent main and sub streams each decoded 900 frames in 30 seconds without errors. Keep this package separate
-until physical-object accuracy and long-duration tests also pass.
+Concurrent main and sub streams in the 1080p-sensor profile each decoded 900
+frames in 30 seconds without errors. Keep this package separate until
+physical-object accuracy and long-duration tests also pass.

@@ -120,6 +120,17 @@ adb pull /root/rv1126_objects23_candidate/result.jpg artifacts/device-objects23-
 22.037、21.772、21.870 ms，平均 21.893 ms。完整板载结果见
 `artifacts/board-validation-objects23-20261024.md`。
 
+候选全视场配置使用：
+
+```bash
+adb shell '/root/rv1126_objects23_candidate/rv1126-object23 start'
+adb shell '/root/rv1126_objects23_candidate/rv1126-object23 health'
+adb shell '/root/rv1126_objects23_candidate/rv1126-object23 stop'
+```
+
+它固定为4K传感器采集、1080p/360p输出，实测约29.8 FPS，不应作为严格30 FPS
+结果。与1080p传感器模式的性能对比见 `artifacts/full-fov-validation-20261024.md`。
+
 ## 8. 需要手动重启时
 
 发布包已包含板端管理脚本，它会同时校验 PID 文件和 `/proc/<pid>/cmdline`，
