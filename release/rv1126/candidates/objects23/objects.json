@@ -194,5 +194,5 @@
   "training_weights": "/home/alientek/桌面/rv1126_object_training/runs/objects23_finetune/weights/best.pt",
   "toolkit_version": "1.7.5",
   "quantized": true,
-  "device_validation": "RV1126 runtime 1.7.0: still image PASS at 28.391 ms; live health PASS; warmed main/sub streams each decoded 300 frames in 10 s on 2026-10-24"
+  "device_validation": "RV1126 runtime 1.7.0: 3 still-image runs averaged 21.893 ms; live health PASS; concurrent main/sub streams each decoded 900 frames in 30 s on 2026-10-24"
 }

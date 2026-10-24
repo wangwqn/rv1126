@@ -14,7 +14,7 @@
 ```bash
 git clone git@github.com:wangwqn/rv1126.git
 cd rv1126
-git checkout v1.8.2
+git checkout v1.8.3
 bash scripts/verify_checkout.sh
 ```
 

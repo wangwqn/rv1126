@@ -26,7 +26,7 @@ adb pull /root/rv1126_objects23_candidate/result.jpg artifacts/device-objects23-
 ```
 
 The verified still-image result is `artifacts/device-objects23-result.jpg`.
-The model detected person, chair, laptop, monitor/TV and cup in 28.391 ms total
-preprocess, inference and postprocess time. The warmed main and sub streams each
-decoded 300 frames in 10 seconds without errors. Keep this package separate
+The model detected person, chair, laptop, monitor/TV and cup. Three consecutive
+board runs averaged 21.893 ms total preprocess, inference and postprocess time.
+Concurrent main and sub streams each decoded 900 frames in 30 seconds without errors. Keep this package separate
 until physical-object accuracy and long-duration tests also pass.

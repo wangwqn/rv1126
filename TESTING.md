@@ -116,7 +116,9 @@ adb shell 'cd /root/rv1126_objects23_candidate && ./object_image objects.rknn ob
 adb pull /root/rv1126_objects23_candidate/result.jpg artifacts/device-objects23-result.jpg
 ```
 
-本次板端检出人、椅子、笔记本电脑、显示器/电视和杯子，总耗时 28.391 ms。
+本次板端检出人、椅子、笔记本电脑、显示器/电视和杯子；连续三次总耗时
+22.037、21.772、21.870 ms，平均 21.893 ms。完整板载结果见
+`artifacts/board-validation-objects23-20261024.md`。
 
 ## 8. 需要手动重启时
 

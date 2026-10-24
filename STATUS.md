@@ -1,6 +1,6 @@
 # 实测状态（2026-10-24）
 
-## 23类模型候选（1.8.2）
+## 23类模型候选（1.8.3）
 
 - 原11类ID不变，新增人、背包、手提包、碗、三明治、椅子、沙发、盆栽、
   餐桌、遥控器、时钟和剪刀。
@@ -11,11 +11,15 @@
 - ONNX检查及PyTorch/ONNX Runtime数值对比通过；真实验证图已检出人、椅子、
   笔记本电脑、显示器和杯子。RKNN Toolkit 1.7.5 INT8转换成功。
 - 书籍、苹果、手提包等弱类仍需补充实际摄像头数据，当前不是生产级精度。
-- RV1126 runtime 1.7.0 / driver 6.4.6.5 单图推理成功，总预处理、推理和后处理
-  28.391 ms，中文名称与检测框正常；结果见 `artifacts/device-objects23-result.jpg`。
-- 实时管线健康检查通过，运行约4500帧时主、子流均 `pts_gap=0`、`ErrCnt=0`、
-  TNR ON，音频零队列丢包；ADB TCP预热后两路各解码300帧/10秒、30.00 FPS、
-  零解码错误。现场抓帧见 `artifacts/device-objects23-live.jpg`。
+- RV1126 runtime 1.7.0 / driver 6.4.6.5 单图连续三次推理输出一致，总预处理、
+  推理和后处理平均21.893 ms，中文名称与检测框正常；结果见
+  `artifacts/device-objects23-result.jpg`。
+- 实时管线健康检查通过，运行超过4950帧时主、子流均 `pts_gap=0`、`ErrCnt=0`、
+  TNR ON，音频零队列丢包；ADB TCP并发测试两路各解码900帧/30秒、30.00 FPS、
+  零解码错误，H.264与PCMA音频实际解码通过。
+- 10秒采样中应用占四核总容量13.63%、整机busy 19.17%、RSS约117 MB；完整数据见
+  `artifacts/board-validation-objects23-20261024.md`，现场抓帧见
+  `artifacts/device-objects23-live.jpg`。
 - 候选仍位于 `release/rv1126/candidates/objects23/`，没有覆盖11类稳定发布；
   逐类实物精度、Wi-Fi、30分钟和24小时回归仍待完成。
 

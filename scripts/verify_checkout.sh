@@ -38,6 +38,7 @@ required=(
   "artifacts/labels23.png"
   "artifacts/device-objects23-result.jpg"
   "artifacts/device-objects23-live.jpg"
+  "artifacts/board-validation-objects23-20261024.md"
   "scripts/push_objects23_candidate.sh"
   "release/rv1126/SHA256SUMS"
   "release/rv1126/VERSION"
