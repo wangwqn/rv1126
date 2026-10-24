@@ -61,6 +61,11 @@ bash scripts/test_rtsp_tcp.sh <开发板当前IP> 60
 为避免启动 PTS 跳变干扰，脚本按真实墙钟区间统计解码帧。结束时的
 `exit_code=143` 是脚本到达指定时间后主动停止 ffprobe，不是异常；以最终
 `PASS/FAIL`、帧数和错误扫描为准。
+当前全视场正式配置为29 FPS，验收时显式传第三参数：
+
+```bash
+bash scripts/test_rtsp_tcp.sh <开发板当前IP> 60 29
+```
 
 ```bash
 adb forward tcp:8554 tcp:8554

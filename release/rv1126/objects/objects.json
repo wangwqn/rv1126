@@ -57,6 +57,66 @@
       "name": "orange",
       "zh": "橙子",
       "coco_index": 49
+    },
+    {
+      "name": "person",
+      "zh": "人",
+      "coco_index": 0
+    },
+    {
+      "name": "backpack",
+      "zh": "背包",
+      "coco_index": 24
+    },
+    {
+      "name": "handbag",
+      "zh": "手提包",
+      "coco_index": 26
+    },
+    {
+      "name": "bowl",
+      "zh": "碗",
+      "coco_index": 45
+    },
+    {
+      "name": "sandwich",
+      "zh": "三明治",
+      "coco_index": 48
+    },
+    {
+      "name": "chair",
+      "zh": "椅子",
+      "coco_index": 56
+    },
+    {
+      "name": "couch",
+      "zh": "沙发",
+      "coco_index": 57
+    },
+    {
+      "name": "potted_plant",
+      "zh": "盆栽",
+      "coco_index": 58
+    },
+    {
+      "name": "dining_table",
+      "zh": "餐桌",
+      "coco_index": 60
+    },
+    {
+      "name": "remote",
+      "zh": "遥控器",
+      "coco_index": 65
+    },
+    {
+      "name": "clock",
+      "zh": "时钟",
+      "coco_index": 74
+    },
+    {
+      "name": "scissors",
+      "zh": "剪刀",
+      "coco_index": 76
     }
   ],
   "input": "RGB uint8 NHWC on device; RGB float32 NCHW /255 in ONNX",
@@ -69,44 +129,44 @@
   "anchors": [
     [
       [
-        5.328125,
-        5.41015625
+        5.953125,
+        5.93359375
       ],
       [
-        6.234375,
-        17.03125
+        6.65625,
+        14.9765625
       ],
       [
-        16.390625,
-        12.2890625
+        18.09375,
+        13.1328125
       ]
     ],
     [
       [
-        15.3828125,
-        29.125
+        15.7578125,
+        28.90625
       ],
       [
-        34.15625,
-        20.984375
+        34.78125,
+        28.203125
       ],
       [
-        40.21875,
-        39.65625
+        30.5,
+        65.9375
       ]
     ],
     [
       [
-        61.75,
-        62.1875
+        64.375,
+        54.46875
       ],
       [
-        109.1875,
-        58.34375
+        75.625,
+        109.0
       ],
       [
-        135.75,
-        129.125
+        175.75,
+        146.25
       ]
     ]
   ],
@@ -114,25 +174,25 @@
   "output_shapes": [
     [
       1,
-      48,
+      84,
       40,
       40
     ],
     [
       1,
-      48,
+      84,
       20,
       20
     ],
     [
       1,
-      48,
+      84,
       10,
       10
     ]
   ],
-  "training_weights": "/home/alientek/桌面/rv1126_object_training/runs/objects11_relu2/weights/best.pt",
+  "training_weights": "/home/alientek/桌面/rv1126_object_training/runs/objects23_finetune/weights/best.pt",
   "toolkit_version": "1.7.5",
   "quantized": true,
-  "device_validation": "NOT YET RUN"
+  "device_validation": "RV1126 runtime 1.7.0: 3 still-image runs averaged 21.893 ms; live health PASS; concurrent main/sub streams each decoded 900 frames in 30 s on 2026-10-24"
 }

@@ -14,7 +14,7 @@ if [ "$#" -eq 1 ]; then
                 --sensor-mode 4k \
                 --width 1920 --height 1080 \
                 --sub-width 640 --sub-height 360 \
-                --fps 30 --ai-fps 3 \
+                --fps 29 --ai-fps 3 \
                 --bitrate 4000000 --sub-bitrate 600000 \
                 --pool-buffers 8 --packet-queue 8 \
                 --rotation 270 --threshold 0.25

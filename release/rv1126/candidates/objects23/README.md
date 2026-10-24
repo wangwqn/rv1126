@@ -17,7 +17,7 @@ Upload without replacing the active release:
 bash scripts/push_objects23_candidate.sh
 ```
 
-Start the user-selected full-FOV profile (4K sensor input, 1080p/360p output):
+Start the archived candidate full-FOV profile (4K sensor input, 1080p/360p output):
 
 ```bash
 adb shell '/root/rv1126_objects23_candidate/rv1126-object23 start'
@@ -25,9 +25,9 @@ adb shell '/root/rv1126_objects23_candidate/rv1126-object23 health'
 adb shell '/root/rv1126_objects23_candidate/rv1126-object23 stop'
 ```
 
-This profile preserves the 3840×2160 active sensor area but measured
-29.83/29.80 FPS for concurrent main/sub clients. It is intentionally not an
-autostart service and does not replace the stable 1080p-sensor profile.
+This profile preserves the3840×2160 active sensor area and now shapes output to
+stable29 FPS. The same model/profile is promoted to the formal `objects/`
+release; this candidate copy remains only for validation history.
 Native 3840×2160 main-stream output was also tested at 6 Mbps with AI/OSD off;
 the board fell to roughly 53 ms per frame and the TCP stream was corrupted.
 That failed mode is documented but is not provided as a default profile.

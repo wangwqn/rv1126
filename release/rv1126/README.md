@@ -10,13 +10,12 @@
 - RK809/RK817 ALSA capture `card 0, device 0` 和 `libasound.so.2`。
 - 不保证兼容 RV1126B、其他厂商 rootfs 或不同版本 Rockchip 多媒体库。
 
-`objects/` 是 11 类常见物品检测的完整运行集合。`face/` 是原始 RockX 人脸检测
+`objects/` 是当前23类常见物品检测的完整运行集合。`face/` 是原始 RockX 人脸检测
 程序；它依赖开发板 rootfs 中已有的 RockX 模型和运行库。两个程序不能同时占用摄像头
 和 TCP 8554 端口。
 
-`candidates/objects23/` 是已完成主机训练、ONNX检查、RKNN转换、RV1126单图和
-短时实时流验证的23类候选。由于逐类精度和长稳回归仍未完成，它不会被
-`deploy_release.sh` 部署为默认模型。
+`candidates/objects23/` 保留23类模型成为正式版本之前的候选验证资料；当前相同模型
+已经提升到 `objects/`。逐类精度和长稳回归仍未完成。
 
 ## 校验
 
@@ -67,9 +66,11 @@ ISPP `ErrCnt` 和 TNR。宿主机可执行 `bash scripts/rollback_device.sh` 恢
 两条 Session 都默认包含 8 kHz 单声道 G.711A/PCMA 音轨。程序从
 `plughw:0,0` 采集双声道 PCM、选择 Main Mic、下混并以 20 ms 分包；
 `--no-audio` 可关闭。执行 `bash scripts/test_rtsp_av.sh 开发板IP 10` 可同时验收。
-当前主流默认 4 Mbps、子流默认 600 kbps。程序默认以 `--sensor-mode 1080p` 选择
-IMX415 1944×1097 RAW12、有效裁剪 1920×1080、30 FPS 模式，TNR 仍由板端 IQ
-配置保持开启。旧 4K 输入在 4/5 Mbps 时都约为 29.5 FPS；1080p 真机连续
+当前主流默认4 Mbps、子流默认600 kbps。正式管理脚本默认以 `--sensor-mode 4k`
+选择IMX415 3864×2192 RAW10、有效裁剪3840×2160，再输出1080p/360p并整形为
+稳定29 FPS，TNR仍由板端IQ配置保持开启。30秒双流各869帧、零错误且服务端
+`pts_gap=0`。程序直接调用时的内建传感器默认仍是1080p；旧4K输入在标称30 FPS、
+4/5 Mbps时都约为29.5 FPS并累计PTS缺口。1080p传感器模式真机连续
 超过 17,000 帧/路仍为 `pts_gap=0`，ADB TCP 双流 60 秒各解码 1800 帧。
 30 分钟/24 小时长稳定性验收仍待完成。
 板载 IQ 缺少 1080p ALSC 标定，因此该模式明确旁路 ALSC；正式产品应补做镜头标定。

@@ -14,7 +14,7 @@
 ```bash
 git clone git@github.com:wangwqn/rv1126.git
 cd rv1126
-git checkout v1.8.5
+git checkout v1.8.6
 bash scripts/verify_checkout.sh
 ```
 
@@ -43,14 +43,15 @@ adb shell '/root/rv1126_objects/rv1126-object health'
 
 ## 检测类别与名称显示
 
-当前稳定发布仍为 11 类：手机、杯子、瓶子、书籍、鼠标、键盘、笔记本电脑、
-显示器/电视、香蕉、苹果、橙子，类别顺序由 `config/classes.json` 固定。
+当前正式发布为23类。原11类：手机、杯子、瓶子、书籍、鼠标、键盘、笔记本电脑、
+显示器/电视、香蕉、苹果、橙子，类别顺序由 `config/classes.json` 固定；它仍可从
+`v1.8.5`及更早标签恢复，但不再作为板端当前模型。
 
-23 类候选模型保持以上 ID 0–10 不变，并追加：人、背包、手提包、碗、三明治、
+23 类模型保持以上 ID 0–10 不变，并追加：人、背包、手提包、碗、三明治、
 椅子、沙发、盆栽、餐桌、遥控器、时钟、剪刀。它由 `config/classes-v2.json`
 定义，已经完成主机训练、ONNX 检查、RKNN 转换、板端单图和短时实时流验证。
-由于精度和长稳测试仍需补充，它继续存放在 `release/rv1126/candidates/objects23/`，
-不会自动覆盖稳定模型。
+模型已提升到 `release/rv1126/objects/` 作为当前发布；原候选目录保留相同模型与
+验证资料，方便审计。精度和长稳测试仍需补充。
 “电脑”目前仍指 COCO 的笔记本电脑，不包含台式机机箱。改变类别后必须重新准备
 标注、训练、导出、量化并生成标签，不能只改 JSON 或标签图片。
 
@@ -161,9 +162,10 @@ cd /home/alientek/桌面/rv1126_object_training
 
 开发板在线后可运行 `bash scripts/push_objects23_candidate.sh`，它会上传到
 `/root/rv1126_objects23_candidate/`，不会替换 `/root/rv1126_objects/`。
-候选目录中的 `rv1126-object23 start` 默认采用 4K 传感器全视场采集，再由
-ISPP 输出 1920×1080 主流和 640×360 子流。该模式实测约 29.8 FPS，优先视场
-而不是严格 30 FPS；性能数据见 `artifacts/full-fov-validation-20261024.md`。
+正式目录中的 `rv1126-object start` 默认采用4K传感器全视场采集，再由ISPP输出
+1920×1080主流和640×360子流，并统一整形为稳定29 FPS。30秒双流各869帧、
+28.97 FPS、零解码错误，服务端 `pts_gap=0`；它不宣称达到30 FPS。性能数据见
+`artifacts/full-fov-29fps-validation-20261024.md`。
 不要将主流直接改成3840×2160：即使关闭AI/OSD、使用6 Mbps，真机ISPP仍只有
 约53 ms/帧，TCP码流同时出现H.264损坏和CSeq错误；失败基线见
 `artifacts/native-4k-output-validation-20261024.md`。

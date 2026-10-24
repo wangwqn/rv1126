@@ -1,16 +1,21 @@
 #!/usr/bin/env bash
 set -uo pipefail
 
-if [[ $# -lt 1 || $# -gt 2 ]]; then
-  echo "Usage: $0 <board-ip> [duration-seconds]" >&2
+if [[ $# -lt 1 || $# -gt 3 ]]; then
+  echo "Usage: $0 <board-ip> [duration-seconds] [expected-fps]" >&2
   exit 2
 fi
 
 board_ip="$1"
 duration="${2:-60}"
+expected_fps="${3:-30}"
 
 if [[ ! "$duration" =~ ^[1-9][0-9]*$ ]]; then
   echo "Duration must be a positive integer" >&2
+  exit 2
+fi
+if [[ ! "$expected_fps" =~ ^[1-9][0-9]*$ ]]; then
+  echo "Expected FPS must be a positive integer" >&2
   exit 2
 fi
 
@@ -36,7 +41,7 @@ mkdir -p "$log_dir"
 : >"$log_dir/sub.frames"
 
 wall_timeout=$((duration + 30))
-expected=$((duration * 30))
+expected=$((duration * expected_fps))
 
 run_stream() {
   local stream="$1"
@@ -70,7 +75,7 @@ wait_until_ready() {
 }
 
 echo "RV1126 RTSP/TCP dual-stream test"
-echo "board=$board_ip duration=${duration}s expected=${expected} frames/stream"
+echo "board=$board_ip duration=${duration}s target=${expected_fps}fps expected=${expected} frames/stream"
 echo "Starting main stream..."
 
 run_stream main &
