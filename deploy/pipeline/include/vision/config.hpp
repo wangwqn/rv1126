@@ -10,8 +10,9 @@ namespace vision {
 
 struct Config {
     int camera = 0;
-    // IMX415 driver mode selected before RKAiq starts. "current" leaves the
-    // sensor under external control; "4k" restores the previous RAW10 mode.
+    // IMX415 driver mode selected before RKAiq starts. "4k-ispp-1080" keeps
+    // the full RAW10 sensor FOV, scales to 1080p in the ISP main path, then
+    // feeds RKISPP through its DMA-BUF virtual input so TNR runs at 1080p.
     std::string sensor_mode = "1080p";
     std::string main_node = "rkispp_scale0";
     std::string sub_node = "rkispp_scale1";
@@ -81,8 +82,10 @@ struct Config {
         if (main_node.empty() || sub_node.empty() || main_node == sub_node ||
             (ai && (model.empty() || metadata.empty())) || (osd && labels.empty()))
             throw std::invalid_argument("two distinct VI nodes and valid model/label paths are required");
-        if (sensor_mode != "1080p" && sensor_mode != "4k" && sensor_mode != "current")
-            throw std::invalid_argument("sensor-mode must be 1080p, 4k or current");
+        if (sensor_mode != "1080p" && sensor_mode != "4k" &&
+            sensor_mode != "4k-ispp-1080" && sensor_mode != "current")
+            throw std::invalid_argument(
+                "sensor-mode must be 1080p, 4k, 4k-ispp-1080 or current");
     }
 };
 
@@ -151,7 +154,7 @@ inline Config parse_config(int argc, char** argv) {
 inline void print_usage(std::ostream& out) {
     out << "RKMedia RV1126 object detection (H.264 + G.711A RTSP, main-stream labels)\n"
            "  --model objects.rknn --metadata objects.json --labels labels.png\n"
-           "  --sensor-mode 1080p|4k|current (default: 1080p RAW12)\n"
+           "  --sensor-mode 1080p|4k|4k-ispp-1080|current (default: 1080p RAW12)\n"
            "  --main-node rkispp_scale0 --sub-node rkispp_scale1 --camera 0\n"
            "  --width 1920 --height 1080 --sub-width 640 --sub-height 360\n"
            "  --rotation 0 --fps 30 --ai-fps 3 --threshold 0.35\n"

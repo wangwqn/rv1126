@@ -85,6 +85,10 @@ void test_config_parsing_and_validation() {
               configured.sensor_mode == "current" &&
               configured.audio_source == "hands-free" && configured.audio_period_ms == 40,
           "numeric command-line settings are parsed");
+
+    const auto full_fov = parse({"--sensor-mode", "4k-ispp-1080"});
+    check(full_fov.sensor_mode == "4k-ispp-1080",
+          "full-FOV ISP-to-ISPP mode is accepted");
     check(!configured.ai && !configured.osd && !configured.audio && configured.iq_dir.empty() &&
               configured.latency_stats && configured.latency_csv == "/tmp/latency.csv",
           "boolean disable switches are parsed");

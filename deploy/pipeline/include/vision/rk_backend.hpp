@@ -14,6 +14,7 @@
 
 namespace vision {
 void check_rk(int status, const char* operation);
+class OfflineIsppTopology;
 
 class Noncopyable {
 protected:
@@ -52,6 +53,7 @@ private:
     int camera_;
     void* context_ = nullptr;
     bool started_ = false;
+    std::unique_ptr<OfflineIsppTopology> offline_topology_;
 };
 
 class ViChannel : Noncopyable {
@@ -61,6 +63,17 @@ public:
     MPP_CHN_S endpoint() const;
 private:
     int camera_, channel_;
+    std::string node_;
+};
+
+class VpChannel : Noncopyable {
+public:
+    VpChannel(int pipe, int channel, std::string node, int width, int height,
+              int buffers);
+    ~VpChannel();
+    MPP_CHN_S endpoint() const;
+private:
+    int pipe_, channel_;
     std::string node_;
 };
 

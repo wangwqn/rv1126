@@ -108,6 +108,17 @@ public:
             sub_vi_.reset(new ViChannel(config_.camera, 1, config_.sub_node,
                                         config_.sub_width, config_.sub_height,
                                         config_.pool_buffers));
+            if (config_.sensor_mode == "4k-ispp-1080") {
+                // ISP mainpath owns the hardware 4K -> 1080p full-FOV resize.
+                // RKMedia passes its exported DMA-BUF directly to the ISPP
+                // virtual input; no CPU mapping or pixel copy is introduced.
+                isp_main_vi_.reset(new ViChannel(config_.camera, 2,
+                                                  "rkisp_mainpath", 1920, 1080,
+                                                  config_.pool_buffers));
+                ispp_input_.reset(new VpChannel(0, 0, "rkispp_input_image",
+                                                 1920, 1080,
+                                                 config_.pool_buffers));
+            }
 
             // Main path stays NV12 in DMA-BUF from VI through RGA into VENC.
             // RGA performs rotation and persistent hardware region composition.
@@ -151,6 +162,12 @@ public:
             sub_bind_.reset(new Binding(sub_vi_->endpoint(), sub_rga_->endpoint()));
             if (config_.ai)
                 ai_bind_.reset(new Binding(sub_vi_->endpoint(), ai_rga_->endpoint()));
+            // Start the offline source last. ISPP output channels must already
+            // have active consumers before VP queues the first input DMA-BUF;
+            // this is also the ordering required by Rockchip's VI-VP demo.
+            if (ispp_input_)
+                isp_to_ispp_.reset(new Binding(isp_main_vi_->endpoint(),
+                                                ispp_input_->endpoint()));
 
             // Open/start ALSA only after the expensive ISP and RKNN setup so
             // the capture ring cannot overrun before its consumer exists.
@@ -294,6 +311,8 @@ private:
         ai_bind_.reset();
         sub_bind_.reset();
         main_bind_.reset();
+        // Stop feeding the offline ISPP input before destroying either end.
+        isp_to_ispp_.reset();
         compositor_.reset();
         if (audio_capture_) audio_recoveries_.store(audio_capture_->recoveries());
         audio_capture_.reset();
@@ -307,6 +326,8 @@ private:
         main_rga_.reset();
         sub_vi_.reset();
         main_vi_.reset();
+        ispp_input_.reset();
+        isp_main_vi_.reset();
         media_.reset();
         isp_.reset();
     }
@@ -580,8 +601,11 @@ private:
     std::unique_ptr<MediaSystem> media_;
     std::unique_ptr<Isp> isp_;
     std::unique_ptr<ViChannel> main_vi_, sub_vi_;
+    std::unique_ptr<ViChannel> isp_main_vi_;
+    std::unique_ptr<VpChannel> ispp_input_;
     std::unique_ptr<RgaChannel> main_rga_, sub_rga_, ai_rga_;
     std::unique_ptr<Binding> main_bind_, sub_bind_, ai_bind_;
+    std::unique_ptr<Binding> isp_to_ispp_;
     std::unique_ptr<Binding> main_venc_bind_, sub_venc_bind_;
     std::unique_ptr<VencChannel> main_venc_, sub_venc_;
     std::unique_ptr<HardwareCompositor> compositor_;

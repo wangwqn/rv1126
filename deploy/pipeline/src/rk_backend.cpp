@@ -13,11 +13,13 @@
 #include <dirent.h>
 #include <fcntl.h>
 #include <linux/media-bus-format.h>
+#include <linux/media.h>
 #include <linux/v4l2-subdev.h>
 #include <stdexcept>
 #include <string>
 #include <sys/ioctl.h>
 #include <unistd.h>
+#include <vector>
 
 namespace vision {
 namespace {
@@ -123,6 +125,137 @@ std::string find_sensor_subdev(const std::string& sensor_name) {
     throw std::runtime_error("cannot find V4L2 subdevice for sensor " + sensor_name);
 }
 
+std::string find_video_node(const std::string& entity_name,
+                            const std::string& prefix) {
+    DIR* raw_dir = ::opendir("/sys/class/video4linux");
+    if (!raw_dir) throw std::runtime_error(system_error("open video4linux sysfs"));
+    std::unique_ptr<DIR, int (*)(DIR*)> dir(raw_dir, ::closedir);
+    while (const dirent* entry = ::readdir(dir.get())) {
+        const std::string node(entry->d_name);
+        if (node.compare(0, prefix.size(), prefix) != 0) continue;
+        if (read_first_line("/sys/class/video4linux/" + node + "/name") == entity_name)
+            return "/dev/" + node;
+    }
+    throw std::runtime_error("cannot find V4L2 node for " + entity_name);
+}
+
+media_entity_desc find_media_entity(int fd, const std::string& name) {
+    media_entity_desc entity{};
+    entity.id = MEDIA_ENT_ID_FLAG_NEXT;
+    while (::ioctl(fd, MEDIA_IOC_ENUM_ENTITIES, &entity) == 0) {
+        if (name == entity.name) return entity;
+        entity.id |= MEDIA_ENT_ID_FLAG_NEXT;
+    }
+    throw std::runtime_error("media entity not found: " + name);
+}
+
+std::string find_media_device(const std::vector<std::string>& entity_names) {
+    for (int index = 0; index < 16; ++index) {
+        const std::string path = "/dev/media" + std::to_string(index);
+        const int raw_fd = ::open(path.c_str(), O_RDWR | O_CLOEXEC);
+        if (raw_fd < 0) continue;
+        FileDescriptor fd(raw_fd);
+        bool found = true;
+        for (const auto& name : entity_names) {
+            try { (void)find_media_entity(fd.get(), name); }
+            catch (...) { found = false; break; }
+        }
+        if (found) return path;
+    }
+    throw std::runtime_error("cannot find media device containing required entities");
+}
+
+struct SavedMediaLink {
+    std::string media_device;
+    media_link_desc link{};
+};
+
+SavedMediaLink set_media_link(const std::string& media_device,
+                              const std::string& source_name, unsigned source_pad,
+                              const std::string& sink_name, unsigned sink_pad,
+                              bool enabled) {
+    const int raw_fd = ::open(media_device.c_str(), O_RDWR | O_CLOEXEC);
+    if (raw_fd < 0) throw std::runtime_error(system_error("open " + media_device));
+    FileDescriptor fd(raw_fd);
+    const auto source = find_media_entity(fd.get(), source_name);
+    const auto sink = find_media_entity(fd.get(), sink_name);
+    std::vector<media_pad_desc> pads(source.pads);
+    std::vector<media_link_desc> links(source.links);
+    media_links_enum enumeration{};
+    enumeration.entity = source.id;
+    enumeration.pads = pads.data();
+    enumeration.links = links.data();
+    if (::ioctl(fd.get(), MEDIA_IOC_ENUM_LINKS, &enumeration) < 0)
+        throw std::runtime_error(system_error("enumerate links for " + source_name));
+    for (auto link : links) {
+        if (link.source.entity != source.id || link.source.index != source_pad ||
+            link.sink.entity != sink.id || link.sink.index != sink_pad)
+            continue;
+        SavedMediaLink saved{media_device, link};
+        const std::uint32_t desired = enabled ? (link.flags | MEDIA_LNK_FL_ENABLED)
+                                              : (link.flags & ~MEDIA_LNK_FL_ENABLED);
+        if (desired != link.flags) {
+            if (link.flags & MEDIA_LNK_FL_IMMUTABLE)
+                throw std::runtime_error("required media link is immutable");
+            link.flags = desired;
+            if (::ioctl(fd.get(), MEDIA_IOC_SETUP_LINK, &link) < 0)
+                throw std::runtime_error(system_error("configure media link " +
+                                                       source_name + " -> " + sink_name));
+        }
+        return saved;
+    }
+    throw std::runtime_error("media link not found: " + source_name + " -> " + sink_name);
+}
+
+void restore_media_link(const SavedMediaLink& saved) noexcept {
+    const int fd = ::open(saved.media_device.c_str(), O_RDWR | O_CLOEXEC);
+    if (fd < 0) return;
+    media_link_desc link = saved.link;
+    if (::ioctl(fd, MEDIA_IOC_SETUP_LINK, &link) < 0)
+        std::fprintf(stderr, "cleanup: restore media link failed: %s\n", std::strerror(errno));
+    ::close(fd);
+}
+
+struct SavedSubdevFormat {
+    std::string node;
+    v4l2_subdev_format format{};
+};
+
+SavedSubdevFormat set_subdev_format(const std::string& node, unsigned pad,
+                                    std::uint32_t code, std::uint32_t width,
+                                    std::uint32_t height) {
+    const int raw_fd = ::open(node.c_str(), O_RDWR | O_CLOEXEC);
+    if (raw_fd < 0) throw std::runtime_error(system_error("open " + node));
+    FileDescriptor fd(raw_fd);
+    v4l2_subdev_format current{};
+    current.which = V4L2_SUBDEV_FORMAT_ACTIVE;
+    current.pad = pad;
+    if (::ioctl(fd.get(), VIDIOC_SUBDEV_G_FMT, &current) < 0)
+        throw std::runtime_error(system_error("get subdevice format " + node));
+    SavedSubdevFormat saved{node, current};
+    auto requested = current;
+    requested.format.width = width;
+    requested.format.height = height;
+    requested.format.code = code;
+    requested.format.field = V4L2_FIELD_NONE;
+    if (::ioctl(fd.get(), VIDIOC_SUBDEV_S_FMT, &requested) < 0)
+        throw std::runtime_error(system_error("set subdevice format " + node));
+    if (requested.format.width != width || requested.format.height != height ||
+        requested.format.code != code)
+        throw std::runtime_error("subdevice rejected requested 1080p format: " + node);
+    return saved;
+}
+
+void restore_subdev_format(const SavedSubdevFormat& saved) noexcept {
+    const int fd = ::open(saved.node.c_str(), O_RDWR | O_CLOEXEC);
+    if (fd < 0) return;
+    auto format = saved.format;
+    if (::ioctl(fd, VIDIOC_SUBDEV_S_FMT, &format) < 0)
+        std::fprintf(stderr, "cleanup: restore subdevice format failed: %s\n",
+                     std::strerror(errno));
+    ::close(fd);
+}
+
 void configure_imx415_mode(const std::string& sensor_name, const std::string& mode) {
     if (mode == "current") {
         std::fprintf(stderr, "camera: keep externally configured sensor mode\n");
@@ -178,6 +311,64 @@ void configure_imx415_mode(const std::string& sensor_name, const std::string& mo
 }
 #endif
 } // namespace
+
+class OfflineIsppTopology : Noncopyable {
+public:
+    OfflineIsppTopology() {
+#ifdef RKAIQ
+        try {
+            const std::string isp_media = find_media_device(
+                {"rkisp-isp-subdev", "rkisp-bridge-ispp", "rkisp_mainpath"});
+            const std::string ispp_media = find_media_device(
+                {"rkispp_input_image", "rkispp-subdev"});
+
+            // ISP20 cannot resize the direct bridge. Route the full-FOV ISP
+            // output through mainpath/MRSZ, whose VI format is set to 1080p.
+            links_.push_back(set_media_link(isp_media, "rkisp-isp-subdev", 2,
+                                            "rkisp-bridge-ispp", 0, false));
+            links_.push_back(set_media_link(isp_media, "rkisp-isp-subdev", 2,
+                                            "rkisp_mainpath", 0, true));
+            links_.push_back(set_media_link(ispp_media, "rkispp_input_image", 0,
+                                            "rkispp-subdev", 0, true));
+
+            const std::string ispp_subdev =
+                find_video_node("rkispp-subdev", "v4l-subdev");
+            formats_.push_back(set_subdev_format(ispp_subdev, 0,
+                                                  MEDIA_BUS_FMT_YUYV8_2X8,
+                                                  1920, 1080));
+            formats_.push_back(set_subdev_format(ispp_subdev, 2,
+                                                  MEDIA_BUS_FMT_YUYV8_2X8,
+                                                  1920, 1080));
+            std::fprintf(stderr,
+                         "camera: offline ISPP topology enabled: "
+                         "RAW10 4K -> ISP mainpath NV12 1080p -> VP DMA-BUF -> "
+                         "ISPP TNR 1080p\n");
+        } catch (...) {
+            rollback();
+            throw;
+        }
+#else
+        throw std::runtime_error("offline ISPP topology requires ISP support");
+#endif
+    }
+
+    ~OfflineIsppTopology() { rollback(); }
+
+private:
+    void rollback() noexcept {
+#ifdef RKAIQ
+        for (auto it = formats_.rbegin(); it != formats_.rend(); ++it)
+            restore_subdev_format(*it);
+        formats_.clear();
+        for (auto it = links_.rbegin(); it != links_.rend(); ++it)
+            restore_media_link(*it);
+        links_.clear();
+#endif
+    }
+
+    std::vector<SavedMediaLink> links_;
+    std::vector<SavedSubdevFormat> formats_;
+};
 
 void check_rk(int status, const char* operation) {
     if (status) throw std::runtime_error(std::string(operation) + " failed (" + std::to_string(status) + ")");
@@ -257,6 +448,8 @@ Isp::Isp(const Config& c) : camera_(c.camera) {
         rate.mode = OP_MANUAL;
         rate.fps = c.fps;
         check_rk(rk_aiq_uapi_setFrameRate(context, rate), "ISP SetFrameRate");
+        if (c.sensor_mode == "4k-ispp-1080")
+            offline_topology_.reset(new OfflineIsppTopology());
     } catch (...) {
         if (started_) rk_aiq_uapi_sysctl_stop(context, false);
         rk_aiq_uapi_sysctl_deinit(context);
@@ -270,6 +463,9 @@ Isp::Isp(const Config& c) : camera_(c.camera) {
 }
 Isp::~Isp() {
 #ifdef RKAIQ
+    // Media nodes are already closed by Pipeline teardown. Restore the normal
+    // direct bridge before stopping RKAiq so a later legacy launch is clean.
+    offline_topology_.reset();
     auto* context = static_cast<rk_aiq_sys_ctx_t*>(context_);
     if (context) {
         if (started_) rk_aiq_uapi_sysctl_stop(context, false);
@@ -280,6 +476,12 @@ Isp::~Isp() {
 
 ViChannel::ViChannel(int camera, int channel, std::string node, int width, int height, int buffers)
     : camera_(camera), channel_(channel), node_(std::move(node)) {
+#ifdef RKAIQ
+    // RKMedia's old entity-name resolver knows rkispp_scale*, but not all ISP
+    // nodes (notably rkisp_mainpath). Resolve unsupported names ourselves.
+    if (!node_.empty() && node_[0] != '/' && node_.compare(0, 6, "rkisp_") == 0)
+        node_ = find_video_node(node_, "video");
+#endif
     VI_CHN_ATTR_S attr{};
     attr.pcVideoNode = const_cast<char*>(node_.c_str());
     attr.u32BufCnt = buffers;
@@ -299,6 +501,34 @@ ViChannel::ViChannel(int camera, int channel, std::string node, int width, int h
 }
 ViChannel::~ViChannel() { warn_rk(RK_MPI_VI_DisableChn(camera_, channel_), "VI DisableChn"); }
 MPP_CHN_S ViChannel::endpoint() const { return {RK_ID_VI, camera_, channel_}; }
+
+VpChannel::VpChannel(int pipe, int channel, std::string node, int width,
+                     int height, int buffers)
+    : pipe_(pipe), channel_(channel), node_(std::move(node)) {
+#ifdef RKAIQ
+    if (!node_.empty() && node_[0] != '/')
+        node_ = find_video_node(node_, "video");
+#endif
+    VP_CHN_ATTR_S attr{};
+    attr.pcVideoNode = const_cast<char*>(node_.c_str());
+    attr.u32BufCnt = buffers;
+    attr.u32Width = width;
+    attr.u32Height = height;
+    attr.enPixFmt = IMAGE_TYPE_NV12;
+    attr.enBufType = VP_CHN_BUF_TYPE_DMA;
+    attr.enWorkMode = VP_WORK_MODE_NORMAL;
+    check_rk(RK_MPI_VP_SetChnAttr(pipe_, channel_, &attr), "VP SetChnAttr");
+    try {
+        check_rk(RK_MPI_VP_EnableChn(pipe_, channel_), "VP EnableChn");
+    } catch (...) {
+        warn_rk(RK_MPI_VP_DisableChn(pipe_, channel_), "VP rollback DisableChn");
+        throw;
+    }
+}
+VpChannel::~VpChannel() {
+    warn_rk(RK_MPI_VP_DisableChn(pipe_, channel_), "VP DisableChn");
+}
+MPP_CHN_S VpChannel::endpoint() const { return {RK_ID_VP, pipe_, channel_}; }
 
 RgaChannel::RgaChannel(int channel, int width, int height, IMAGE_TYPE_E output, int rotation, int buffers)
     : channel_(channel) {
