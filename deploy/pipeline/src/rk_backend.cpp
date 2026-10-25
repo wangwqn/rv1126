@@ -415,6 +415,11 @@ Isp::Isp(const Config& c) : camera_(c.camera) {
     if (!sensor_name || !*sensor_name)
         throw std::runtime_error("ISP camera has no RKAiq static metadata");
     configure_imx415_mode(sensor_name, c.sensor_mode);
+    // Select DDR input before RKAiq opens bridge/ISPP parameter streams.
+    // Switching a live ISP->ISPP bridge to DDR leaves this BSP generation's
+    // internal bridge buffers in the old mode and can wedge on the first frame.
+    if (c.sensor_mode == "4k-ispp-1080")
+        offline_topology_.reset(new OfflineIsppTopology());
     auto* context = rk_aiq_uapi_sysctl_init(sensor_name,
                                             c.iq_dir.c_str(), nullptr, nullptr);
     if (!context) throw std::runtime_error("ISP Init returned a null RKAiq context");
@@ -448,8 +453,6 @@ Isp::Isp(const Config& c) : camera_(c.camera) {
         rate.mode = OP_MANUAL;
         rate.fps = c.fps;
         check_rk(rk_aiq_uapi_setFrameRate(context, rate), "ISP SetFrameRate");
-        if (c.sensor_mode == "4k-ispp-1080")
-            offline_topology_.reset(new OfflineIsppTopology());
     } catch (...) {
         if (started_) rk_aiq_uapi_sysctl_stop(context, false);
         rk_aiq_uapi_sysctl_deinit(context);
@@ -463,14 +466,14 @@ Isp::Isp(const Config& c) : camera_(c.camera) {
 }
 Isp::~Isp() {
 #ifdef RKAIQ
-    // Media nodes are already closed by Pipeline teardown. Restore the normal
-    // direct bridge before stopping RKAiq so a later legacy launch is clean.
-    offline_topology_.reset();
     auto* context = static_cast<rk_aiq_sys_ctx_t*>(context_);
     if (context) {
         if (started_) rk_aiq_uapi_sysctl_stop(context, false);
         rk_aiq_uapi_sysctl_deinit(context);
     }
+    // Media nodes and RKAiq parameter streams are now closed. Restore the
+    // normal direct bridge so a later legacy launch starts from a clean graph.
+    offline_topology_.reset();
 #endif
 }
 
