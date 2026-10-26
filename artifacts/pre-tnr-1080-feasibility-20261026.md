@@ -59,8 +59,10 @@ ghosting, noise pumping, or invalid gain-buffer use.
 1. Preserve full FOV and RKAiq quality processing:
    `4K RAW10 -> ISP/FBC 4K -> ISPP TNR 4K -> scale0 1080p + scale1 360p`.
    This is the validated v1.8.7 path, but the observed rate is about 29.x FPS.
-2. Preserve native 30 FPS and 1080p TNR load:
-   use the IMX415 1080p sensor mode. This changes the sensor FOV.
+2. Preserve 30 FPS, the recommended recording FOV and 1080p TNR load:
+   use the IMX415 1944x1097 RAW12 2x2 adjacent-pixel binning mode, then select
+   its aligned 1920x1080 recording area. Board comparison on 2026-10-26 showed
+   the same scene boundaries as the 4K-to-1080p path.
 3. Use ISP full-FOV 1080p plus independent offline ISPP:
    this reaches 30 FPS but has no valid RKAiq TNR/NR/sharp parameters and must
    not be presented as the requested TNR pipeline.

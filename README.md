@@ -59,8 +59,10 @@ adb shell '/root/rv1126_objects/rv1126-object health'
 子码流保留无标注的低分辨率预览，AI 从子流取帧，检测结果按坐标缩放到主流。
 标签已写入编码前的像素，VLC 无需额外插件。
 
-实时管线默认将 IMX415 切换到 1944×1097 RAW12、裁剪 1920×1080、30 FPS，
-因此 TNR 直接处理 1080P 而不再先处理 4K。VI 使用 V4L2 DMABUF，主、子视频
+实时管线默认将 IMX415 切换到 1944×1097 RAW12 的 2×2 相邻像素 binning
+模式，再按有效记录区域对齐为 1920×1080、30 FPS；它保留 4K 推荐记录区域的
+视场，不是截取 4K 中央的 1080p。因此 TNR 直接处理 1080P 而不再先处理 4K。
+VI 使用 V4L2 DMABUF，主、子视频
 分别经 RGA NV12 硬件通道直绑 VENC；第三个低分辨率 RGA BGR 通道只供 RKNN，
 并在 RGA 输入端按 `ai-fps` 硬件抽帧，默认只转换 3 FPS，不再转换后丢弃其余帧。
 主流不再转成整帧 RGB，也不再用 OpenCV 修改 1080P 像素。中文名和置信度只在
@@ -246,8 +248,8 @@ cd /root/rv1126_objects
 板载 2020 版 `librtsp` 在 8 Mbps 的 TCP interleaved 模式下实测会拥塞并损坏
 主流，因此默认仍为 4 Mbps。旧版在 4K IMX415 输入、TNR 开启时只有约 29.5 FPS，
 且稳态约每秒出现一个 PTS 缺口；降低编码码率不能改善前端吞吐。当前版本改为
-`--sensor-mode 1080p`，在 RKAiq 启动前用 V4L2 subdev API 选择 IMX415 的原生
-1080p@30 RAW12 模式。真机连续统计超过 17,000 帧/路时稳态
+`--sensor-mode 1080p`，在 RKAiq 启动前用 V4L2 subdev API 选择 IMX415 的
+2×2 binning 1080p@30 RAW12 模式。真机连续统计超过 17,000 帧/路时稳态
 `pts_gap=0`，ADB TCP 双流 60 秒各解码 1800 帧；30 分钟/24 小时结果仍须按
 真机验收文档复测。`--sensor-mode 4k` 可恢复旧的
 3864×2192 RAW10 模式，`current` 则保持外部预先配置的模式。
