@@ -105,6 +105,10 @@ void test_config_parsing_and_validation() {
                    "unknown options are rejected");
     expect_invalid([] { parse({"--sensor-mode", "720p"}); },
                    "unsupported sensor modes are rejected");
+    expect_invalid([] { parse({"--sensor-mode", "4k-ispp-1080", "--fps", "29"}); },
+                   "offline full-FOV topology requires 30 FPS");
+    expect_invalid([] { parse({"--sensor-mode", "4k-ispp-1080", "--no-isp"}); },
+                   "offline full-FOV topology requires RKAiq");
     expect_invalid([] { parse({"--fps"}); },
                    "missing option values are rejected");
     expect_invalid([] { parse({"--latency-csv", ""}); },

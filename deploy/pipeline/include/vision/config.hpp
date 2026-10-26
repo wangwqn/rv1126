@@ -86,6 +86,11 @@ struct Config {
             sensor_mode != "4k-ispp-1080" && sensor_mode != "current")
             throw std::invalid_argument(
                 "sensor-mode must be 1080p, 4k, 4k-ispp-1080 or current");
+        if (sensor_mode == "4k-ispp-1080" &&
+            (iq_dir.empty() || width != 1920 || height != 1080 ||
+             sub_width != 640 || sub_height != 360 || fps != 30))
+            throw std::invalid_argument(
+                "4k-ispp-1080 requires RKAiq, 1920x1080 + 640x360 and 30 FPS");
     }
 };
 

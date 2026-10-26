@@ -102,20 +102,28 @@ public:
             rtsp_.reset(new RtspServer(config_.rtsp_port, config_.audio));
             isp_.reset(new Isp(config_));
             media_.reset(new MediaSystem());
-            main_vi_.reset(new ViChannel(config_.camera, 0, config_.main_node,
+            const bool offline_ispp = config_.sensor_mode == "4k-ispp-1080";
+            const std::string& main_node = offline_ispp
+                                               ? isp_->offline_main_node()
+                                               : config_.main_node;
+            const std::string& sub_node = offline_ispp
+                                              ? isp_->offline_sub_node()
+                                              : config_.sub_node;
+            main_vi_.reset(new ViChannel(config_.camera, 0, main_node,
                                          config_.width, config_.height,
                                          config_.pool_buffers));
-            sub_vi_.reset(new ViChannel(config_.camera, 1, config_.sub_node,
+            sub_vi_.reset(new ViChannel(config_.camera, 1, sub_node,
                                         config_.sub_width, config_.sub_height,
                                         config_.pool_buffers));
-            if (config_.sensor_mode == "4k-ispp-1080") {
+            if (offline_ispp) {
                 // ISP mainpath owns the hardware 4K -> 1080p full-FOV resize.
                 // RKMedia passes its exported DMA-BUF directly to the ISPP
                 // virtual input; no CPU mapping or pixel copy is introduced.
                 isp_main_vi_.reset(new ViChannel(config_.camera, 2,
                                                   "rkisp_mainpath", 1920, 1080,
                                                   config_.pool_buffers));
-                ispp_input_.reset(new VpChannel(0, 0, "rkispp_input_image",
+                ispp_input_.reset(new VpChannel(0, 0,
+                                                 isp_->offline_input_node(),
                                                  1920, 1080,
                                                  config_.pool_buffers));
             }

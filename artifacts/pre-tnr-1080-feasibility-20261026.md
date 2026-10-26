@@ -67,18 +67,41 @@ ghosting, noise pumping, or invalid gain-buffer use.
 
 ## Work required for the exact topology
 
-The exact topology needs a coordinated BSP change, not only an application
-change. A production implementation must provide one of the following:
+The exact topology needs coordinated RKAiq/application handling, not only a
+different pair of VI node names. A production implementation must provide one
+of the following:
 
 - Rockchip-supported ISP bridge resize, including correct picture and gain
   plane scaling/stride propagation into RKISPP; or
 - RKAiq support for routing the sensor's per-frame ISPP parameter stream to an
   offline `rkispp` instance whose input is the ISP mainpath DMA-BUF.
 
-Either solution changes the kernel/RKAiq integration and requires a recovery
-image, serial-console capture, image-quality validation across gain/exposure,
-and regression testing before replacing the eMMC boot partition.
+The kernel route would require a recovery image and serial-console capture
+before replacing the eMMC boot partition. The RKAiq route can be validated as
+an application-local shared library, but still requires image-quality checks
+across gain/exposure and full regression testing.
 
-The experimental application code is retained only on its named feature
-branch. It must not be merged into the release branch or deployed by the
-service manager without the missing BSP support.
+## Isolated RKAiq candidate prepared
+
+The second option is now implemented as a reversible userspace candidate:
+
+- `RKAIQ_ISPP_TARGET=1` routes sensor ISP0's dynamic ISPP parameters and stats
+  to independent `rkispp1`.
+- `RKAIQ_ISPP_INPUT_SIZE=1920x1080` prevents RKAiq from replacing the offline
+  sink size with the 4K ISP source-pad size.
+- the application resolves input, scale0, scale1 and subdevice nodes from the
+  `rkispp1` media model, rather than taking the first globally duplicated
+  entity name;
+- a required exported marker makes the program refuse this mode if the stock
+  RKAiq library was accidentally loaded;
+- the custom library is loaded only from
+  `/root/rv1126_full_fov_candidate` with `LD_LIBRARY_PATH`; `/usr/lib` and the
+  boot partition are unchanged.
+
+The ARM application and RKAiq library compile successfully, portable host
+tests pass, and the release bundle passes SHA-256 verification. Board runtime
+validation is still pending because the USB ADB transport remains `offline`
+after the prior driver-wedge experiment. The candidate must remain isolated
+from the normal service until a clean power cycle/reconnect permits the staged
+no-AI test, `/proc/rkispp1` TNR/ErrCnt verification, TCP dual-stream frame
+count, and thermal/long-run regression.

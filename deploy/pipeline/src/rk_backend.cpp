@@ -11,6 +11,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <dirent.h>
+#include <dlfcn.h>
 #include <fcntl.h>
 #include <linux/media-bus-format.h>
 #include <linux/media.h>
@@ -18,6 +19,8 @@
 #include <stdexcept>
 #include <string>
 #include <sys/ioctl.h>
+#include <sys/stat.h>
+#include <sys/sysmacros.h>
 #include <unistd.h>
 #include <vector>
 
@@ -149,12 +152,17 @@ media_entity_desc find_media_entity(int fd, const std::string& name) {
     throw std::runtime_error("media entity not found: " + name);
 }
 
-std::string find_media_device(const std::vector<std::string>& entity_names) {
+std::string find_media_device(const std::string& model,
+                              const std::vector<std::string>& entity_names) {
     for (int index = 0; index < 16; ++index) {
         const std::string path = "/dev/media" + std::to_string(index);
         const int raw_fd = ::open(path.c_str(), O_RDWR | O_CLOEXEC);
         if (raw_fd < 0) continue;
         FileDescriptor fd(raw_fd);
+        media_device_info info{};
+        if (::ioctl(fd.get(), MEDIA_IOC_DEVICE_INFO, &info) < 0 ||
+            (!model.empty() && model != info.model))
+            continue;
         bool found = true;
         for (const auto& name : entity_names) {
             try { (void)find_media_entity(fd.get(), name); }
@@ -163,6 +171,24 @@ std::string find_media_device(const std::vector<std::string>& entity_names) {
         if (found) return path;
     }
     throw std::runtime_error("cannot find media device containing required entities");
+}
+
+std::string find_media_entity_node(const std::string& media_device,
+                                   const std::string& entity_name,
+                                   const std::string& prefix) {
+    const int raw_fd = ::open(media_device.c_str(), O_RDWR | O_CLOEXEC);
+    if (raw_fd < 0) throw std::runtime_error(system_error("open " + media_device));
+    FileDescriptor fd(raw_fd);
+    const auto entity = find_media_entity(fd.get(), entity_name);
+    const dev_t wanted = makedev(entity.dev.major, entity.dev.minor);
+    for (int index = 0; index < 128; ++index) {
+        const std::string path = "/dev/" + prefix + std::to_string(index);
+        struct stat status{};
+        if (::stat(path.c_str(), &status) == 0 && status.st_rdev == wanted)
+            return path;
+    }
+    throw std::runtime_error("cannot resolve device node for " + entity_name +
+                             " on " + media_device);
 }
 
 struct SavedMediaLink {
@@ -317,9 +343,9 @@ public:
     OfflineIsppTopology() {
 #ifdef RKAIQ
         try {
-            const std::string isp_media = find_media_device(
+            const std::string isp_media = find_media_device("rkisp0",
                 {"rkisp-isp-subdev", "rkisp-bridge-ispp", "rkisp_mainpath"});
-            const std::string ispp_media = find_media_device(
+            const std::string ispp_media = find_media_device("rkispp1",
                 {"rkispp_input_image", "rkispp-subdev"});
 
             // ISP20 cannot resize the direct bridge. Route the full-FOV ISP
@@ -331,8 +357,14 @@ public:
             links_.push_back(set_media_link(ispp_media, "rkispp_input_image", 0,
                                             "rkispp-subdev", 0, true));
 
-            const std::string ispp_subdev =
-                find_video_node("rkispp-subdev", "v4l-subdev");
+            const std::string ispp_subdev = find_media_entity_node(
+                ispp_media, "rkispp-subdev", "v4l-subdev");
+            input_node_ = find_media_entity_node(
+                ispp_media, "rkispp_input_image", "video");
+            main_node_ = find_media_entity_node(
+                ispp_media, "rkispp_scale0", "video");
+            sub_node_ = find_media_entity_node(
+                ispp_media, "rkispp_scale1", "video");
             formats_.push_back(set_subdev_format(ispp_subdev, 0,
                                                   MEDIA_BUS_FMT_YUYV8_2X8,
                                                   1920, 1080));
@@ -342,7 +374,8 @@ public:
             std::fprintf(stderr,
                          "camera: offline ISPP topology enabled: "
                          "RAW10 4K -> ISP mainpath NV12 1080p -> VP DMA-BUF -> "
-                         "ISPP TNR 1080p\n");
+                         "rkispp1 TNR 1080p; main=%s sub=%s input=%s\n",
+                         main_node_.c_str(), sub_node_.c_str(), input_node_.c_str());
         } catch (...) {
             rollback();
             throw;
@@ -353,6 +386,10 @@ public:
     }
 
     ~OfflineIsppTopology() { rollback(); }
+
+    const std::string& main_node() const { return main_node_; }
+    const std::string& sub_node() const { return sub_node_; }
+    const std::string& input_node() const { return input_node_; }
 
 private:
     void rollback() noexcept {
@@ -368,6 +405,9 @@ private:
 
     std::vector<SavedMediaLink> links_;
     std::vector<SavedSubdevFormat> formats_;
+    std::string main_node_;
+    std::string sub_node_;
+    std::string input_node_;
 };
 
 void check_rk(int status, const char* operation) {
@@ -409,6 +449,25 @@ Isp::Isp(const Config& c) : camera_(c.camera) {
     // RKAiq uses HDR_MODE during initialization even though prepare() also
     // receives the working mode. This process owns a single normal-mode ISP.
     check_rk(::setenv("HDR_MODE", "0", 1), "ISP set HDR_MODE");
+    if (c.sensor_mode == "4k-ispp-1080") {
+        // The custom library redirects ISP0's dynamic ISPP parameters and
+        // statistics to independent rkispp1. Refuse to run this topology with
+        // the stock library: it would still control rkispp0 and can wedge this
+        // BSP when frames arrive through a DDR input.
+        using OverrideVersion = int (*)();
+        auto* version = reinterpret_cast<OverrideVersion>(
+            ::dlsym(RTLD_DEFAULT, "rk_aiq_ispp_target_override_version"));
+        if (!version || version() < 1)
+            throw std::runtime_error(
+                "4k-ispp-1080 requires the bundled patched librkaiq.so");
+        check_rk(::setenv("RKAIQ_ISPP_TARGET", "1", 1),
+                 "ISP set ISPP target");
+        check_rk(::setenv("RKAIQ_ISPP_INPUT_SIZE", "1920x1080", 1),
+                 "ISP set ISPP input size");
+    } else {
+        ::unsetenv("RKAIQ_ISPP_TARGET");
+        ::unsetenv("RKAIQ_ISPP_INPUT_SIZE");
+    }
     rk_aiq_static_info_t info{};
     rk_aiq_uapi_sysctl_enumStaticMetas(camera_, &info);
     const char* sensor_name = info.sensor_info.sensor_name;
@@ -463,6 +522,24 @@ Isp::Isp(const Config& c) : camera_(c.camera) {
 #else
     throw std::runtime_error("ISP support disabled at build time; use --no-isp with an externally managed ISP");
 #endif
+}
+
+const std::string& Isp::offline_main_node() const {
+    if (!offline_topology_)
+        throw std::logic_error("offline ISPP topology is not active");
+    return offline_topology_->main_node();
+}
+
+const std::string& Isp::offline_sub_node() const {
+    if (!offline_topology_)
+        throw std::logic_error("offline ISPP topology is not active");
+    return offline_topology_->sub_node();
+}
+
+const std::string& Isp::offline_input_node() const {
+    if (!offline_topology_)
+        throw std::logic_error("offline ISPP topology is not active");
+    return offline_topology_->input_node();
 }
 Isp::~Isp() {
 #ifdef RKAIQ

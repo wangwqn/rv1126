@@ -1,0 +1,90 @@
+--- a/hwi/isp20/CamHwIsp20.cpp
++++ b/hwi/isp20/CamHwIsp20.cpp
+@@ -26,6 +26,40 @@
+ #include <sys/mman.h>
+ #include <fcntl.h>
+
++extern "C" int rk_aiq_ispp_target_override_version()
++{
++    return 1;
++}
++
++static int get_ispp_target_override()
++{
++    const char* value = getenv("RKAIQ_ISPP_TARGET");
++    if (!value || !*value)
++        return -1;
++    char* end = NULL;
++    const long index = strtol(value, &end, 10);
++    if (!end || *end || index < 0 || index >= MAX_CAM_NUM)
++        return -1;
++    return static_cast<int>(index);
++}
++
++static bool get_ispp_input_size_override(uint32_t& width, uint32_t& height)
++{
++    const char* value = getenv("RKAIQ_ISPP_INPUT_SIZE");
++    if (!value || !*value)
++        return false;
++    unsigned parsed_width = 0;
++    unsigned parsed_height = 0;
++    char trailing = '\0';
++    if (sscanf(value, "%ux%u%c", &parsed_width, &parsed_height, &trailing) != 2 ||
++            parsed_width < 32 || parsed_height < 32 ||
++            parsed_width > 8192 || parsed_height > 8192)
++        return false;
++    width = parsed_width;
++    height = parsed_height;
++    return true;
++}
++
+ namespace RkCam {
+ std::map<std::string, SmartPtr<rk_aiq_static_info_t>> CamHwIsp20::mCamHwInfos;
+ std::map<std::string, SmartPtr<rk_sensor_full_info_t>> CamHwIsp20::mSensorHwInfos;
+@@ -922,17 +956,24 @@
+          * The ISP and ISPP match links through the media device model
+          */
+         if (s_full_info->linked_to_isp) {
++            const int requested_ispp = get_ispp_target_override();
++            const int desired_ispp = requested_ispp >= 0
++                                         ? requested_ispp
++                                         : s_full_info->isp_info->model_idx;
+             for (i = 0; i < MAX_CAM_NUM; i++) {
+                 LOGI_CAMHW_SUBM(ISP20HW_SUBM, "isp model_idx: %d, ispp(%d) model_idx: %d\n",
+                                 s_full_info->isp_info->model_idx,
+                                 i,
+                                 CamHwIsp20::mIspHwInfos.ispp_info[i].model_idx);
+
+-                if (s_full_info->isp_info->model_idx == CamHwIsp20::mIspHwInfos.ispp_info[i].model_idx) {
++                if (desired_ispp == CamHwIsp20::mIspHwInfos.ispp_info[i].model_idx &&
++                        strlen(CamHwIsp20::mIspHwInfos.ispp_info[i].media_dev_path)) {
+                     s_full_info->ispp_info = &CamHwIsp20::mIspHwInfos.ispp_info[i];
+-                    LOGI_CAMHW_SUBM(ISP20HW_SUBM, "isp(%d) link to ispp(%d)\n",
++                    LOGI_CAMHW_SUBM(ISP20HW_SUBM,
++                                    "isp(%d) parameters/stats routed to ispp(%d)%s\n",
+                                     s_full_info->isp_info->model_idx,
+-                                    CamHwIsp20::mIspHwInfos.ispp_info[i].model_idx);
++                                    CamHwIsp20::mIspHwInfos.ispp_info[i].model_idx,
++                                    requested_ispp >= 0 ? " (override)" : "");
+                     CamHwIsp20::mCamHwInfos[s_full_info->sensor_name]->sensor_info.binded_strm_media_idx =
+                         atoi(s_full_info->ispp_info->media_dev_path + strlen("/dev/media"));
+                     LOGI_CAMHW_SUBM(ISP20HW_SUBM, "sensor %s adapted to pp media %d:%s\n",
+@@ -1634,6 +1675,18 @@
+     isp_src_fmt.pad = 2;
+     ret = mIspCoreDev->getFormat(isp_src_fmt);
+
++    uint32_t ispp_width = 0;
++    uint32_t ispp_height = 0;
++    if (get_ispp_target_override() >= 0 &&
++            get_ispp_input_size_override(ispp_width, ispp_height)) {
++        LOGI_CAMHW_SUBM(ISP20HW_SUBM,
++                        "override offline ispp input size: %ux%u -> %ux%u\n",
++                        isp_src_fmt.format.width, isp_src_fmt.format.height,
++                        ispp_width, ispp_height);
++        isp_src_fmt.format.width = ispp_width;
++        isp_src_fmt.format.height = ispp_height;
++    }
++
+     // set ispp format, same as isp_src_fmt
+     isp_src_fmt.pad = 0;
+     ret = _ispp_sd->setFormat(isp_src_fmt);

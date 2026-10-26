@@ -1,0 +1,149 @@
+#!/bin/sh
+set -eu
+
+APP_DIR=${RV1126_APP_DIR:-/root/rv1126_full_fov_candidate}
+APP="$APP_DIR/rkmedia_object_detection_rtsp"
+PID_FILE=${RV1126_PID_FILE:-/var/run/rv1126-full-fov.pid}
+LOG_FILE=${RV1126_LOG_FILE:-/tmp/rv1126-full-fov.log}
+LIB_DIR="$APP_DIR"
+
+default_args() {
+    set -- \
+        --sensor-mode 4k-ispp-1080 \
+        --width 1920 --height 1080 \
+        --sub-width 640 --sub-height 360 \
+        --fps 30 --ai-fps 3 \
+        --bitrate 4000000 --sub-bitrate 600000 \
+        --pool-buffers 8 --packet-queue 8 \
+        --rotation 270 --threshold 0.25
+    DEFAULT_ARGS="$*"
+}
+
+running_pid() {
+    [ -s "$PID_FILE" ] || return 1
+    pid=$(cat "$PID_FILE" 2>/dev/null || true)
+    case "$pid" in *[!0-9]*|'') return 1 ;; esac
+    [ -d "/proc/$pid" ] || return 1
+    command_line=$(tr '\000' ' ' <"/proc/$pid/cmdline" 2>/dev/null || true)
+    case "$command_line" in *"$APP"*) printf '%s\n' "$pid" ;; *) return 1 ;; esac
+}
+
+start_service() {
+    if pid=$(running_pid); then
+        echo "Already running: pid=$pid"
+        return 0
+    fi
+    [ -x "$APP" ] || { echo "Missing executable: $APP" >&2; return 1; }
+    [ -s "$APP_DIR/librkaiq.so" ] || {
+        echo "Missing candidate library: $APP_DIR/librkaiq.so" >&2
+        return 1
+    }
+    if [ "$#" -eq 0 ]; then
+        default_args
+        set -- $DEFAULT_ARGS
+    fi
+    rm -f "$PID_FILE"
+    cd "$APP_DIR"
+    : >"$LOG_FILE"
+    LD_LIBRARY_PATH="$LIB_DIR${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" \
+        nohup "$APP" "$@" >"$LOG_FILE" 2>&1 </dev/null &
+    pid=$!
+    printf '%s\n' "$pid" >"$PID_FILE"
+    sleep 3
+    if running_pid >/dev/null; then
+        echo "Started: pid=$pid log=$LOG_FILE"
+        return 0
+    fi
+    rm -f "$PID_FILE"
+    echo "Start failed; log follows:" >&2
+    tail -120 "$LOG_FILE" >&2 || true
+    return 1
+}
+
+stop_service() {
+    if ! pid=$(running_pid); then
+        rm -f "$PID_FILE"
+        echo "Not running"
+        return 0
+    fi
+    kill -TERM "$pid"
+    count=0
+    while [ -d "/proc/$pid" ] && [ "$count" -lt 15 ]; do
+        sleep 1
+        count=$((count + 1))
+    done
+    if [ -d "/proc/$pid" ]; then
+        kill -KILL "$pid" 2>/dev/null || true
+    fi
+    rm -f "$PID_FILE"
+    echo "Stopped"
+}
+
+pipeline_frame() {
+    channel=$1
+    sed -n "/^Output .*${channel}/s/.*(frame:\([0-9][0-9]*\).*/\1/p" \
+        /proc/rkispp1 2>/dev/null | head -1
+}
+
+health_service() {
+    pid=$(running_pid) || { echo "Unhealthy: service is not running" >&2; return 1; }
+    netstat -lnt 2>/dev/null | grep -q ':8554[[:space:]]' || {
+        echo "Unhealthy: RTSP TCP port 8554 is not listening" >&2
+        return 1
+    }
+    grep -q 'parameters/stats routed to ispp(1) (override)' "$LOG_FILE" || {
+        echo "Unhealthy: RKAiq ISPP1 override was not confirmed" >&2
+        return 1
+    }
+    grep -q 'override offline ispp input size: .* -> 1920x1080' "$LOG_FILE" || {
+        echo "Unhealthy: RKAiq 1080p ISPP input was not confirmed" >&2
+        return 1
+    }
+    main_before=$(pipeline_frame rkispp_scale0)
+    sub_before=$(pipeline_frame rkispp_scale1)
+    sleep 3
+    main_after=$(pipeline_frame rkispp_scale0)
+    sub_after=$(pipeline_frame rkispp_scale1)
+    [ -n "$main_before" ] && [ -n "$sub_before" ] &&
+        [ "$main_after" -gt "$main_before" ] && [ "$sub_after" -gt "$sub_before" ] || {
+        echo "Unhealthy: rkispp1 output counters did not advance" >&2
+        return 1
+    }
+    errors=$(sed -n 's/^Interrupt .*ErrCnt:\([0-9][0-9]*\).*/\1/p' \
+        /proc/rkispp1 2>/dev/null | head -1)
+    [ "${errors:-1}" -eq 0 ] || {
+        echo "Unhealthy: rkispp1 ErrCnt=${errors:-unknown}" >&2
+        return 1
+    }
+    tnr=$(grep '^TNR ' /proc/rkispp1 2>/dev/null | head -1)
+    echo "$tnr" | grep -q 'TNR[[:space:]]*ON' || {
+        echo "Unhealthy: rkispp1 TNR is not ON" >&2
+        return 1
+    }
+    echo "Healthy: pid=$pid main_delta=$((main_after-main_before)) sub_delta=$((sub_after-sub_before)) ErrCnt=0 TNR=ON"
+}
+
+command=${1:-}
+[ "$#" -eq 0 ] || shift
+case "$command" in
+    start) start_service "$@" ;;
+    stop) stop_service ;;
+    restart) stop_service; start_service "$@" ;;
+    status)
+        if pid=$(running_pid); then echo "Running: pid=$pid log=$LOG_FILE"; else echo "Stopped"; exit 3; fi
+        ;;
+    health) health_service ;;
+    foreground)
+        cd "$APP_DIR"
+        if [ "$#" -eq 0 ]; then
+            default_args
+            set -- $DEFAULT_ARGS
+        fi
+        export LD_LIBRARY_PATH="$LIB_DIR${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+        exec "$APP" "$@"
+        ;;
+    *)
+        echo "Usage: $0 {start|stop|restart|status|health|foreground} [program options...]" >&2
+        exit 2
+        ;;
+esac
