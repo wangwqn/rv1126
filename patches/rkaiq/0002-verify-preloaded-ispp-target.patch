@@ -1,0 +1,29 @@
+--- a/hwi/isp20/CamHwIsp20.cpp
++++ b/hwi/isp20/CamHwIsp20.cpp
+@@ -26,9 +26,16 @@
+ #include <sys/mman.h>
+ #include <fcntl.h>
+
++static int g_applied_ispp_target = -1;
++
+ extern "C" int rk_aiq_ispp_target_override_version()
+ {
+-    return 1;
++    return 2;
++}
++
++extern "C" int rk_aiq_ispp_target_override_applied()
++{
++    return g_applied_ispp_target;
+ }
+
+ static int get_ispp_target_override()
+@@ -969,6 +976,8 @@
+                 if (desired_ispp == CamHwIsp20::mIspHwInfos.ispp_info[i].model_idx &&
+                         strlen(CamHwIsp20::mIspHwInfos.ispp_info[i].media_dev_path)) {
+                     s_full_info->ispp_info = &CamHwIsp20::mIspHwInfos.ispp_info[i];
++                    if (requested_ispp >= 0)
++                        g_applied_ispp_target = s_full_info->ispp_info->model_idx;
+                     LOGI_CAMHW_SUBM(ISP20HW_SUBM,
+                                     "isp(%d) parameters/stats routed to ispp(%d)%s\n",
+                                     s_full_info->isp_info->model_idx,

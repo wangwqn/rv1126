@@ -45,7 +45,8 @@ start_service() {
     rm -f "$PID_FILE"
     cd "$APP_DIR"
     : >"$LOG_FILE"
-    LD_LIBRARY_PATH="$LIB_DIR${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" \
+    RKAIQ_ISPP_TARGET=1 RKAIQ_ISPP_INPUT_SIZE=1920x1080 \
+      LD_LIBRARY_PATH="$LIB_DIR${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" \
         nohup "$APP" "$@" >"$LOG_FILE" 2>&1 </dev/null &
     pid=$!
     printf '%s\n' "$pid" >"$PID_FILE"
@@ -91,7 +92,7 @@ health_service() {
         echo "Unhealthy: RTSP TCP port 8554 is not listening" >&2
         return 1
     }
-    grep -q 'parameters/stats routed to ispp(1) (override)' "$LOG_FILE" || {
+    grep -q 'camera: RKAiq preload confirmed ISPP target 1' "$LOG_FILE" || {
         echo "Unhealthy: RKAiq ISPP1 override was not confirmed" >&2
         return 1
     }
@@ -139,6 +140,8 @@ case "$command" in
             default_args
             set -- $DEFAULT_ARGS
         fi
+        export RKAIQ_ISPP_TARGET=1
+        export RKAIQ_ISPP_INPUT_SIZE=1920x1080
         export LD_LIBRARY_PATH="$LIB_DIR${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
         exec "$APP" "$@"
         ;;

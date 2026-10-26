@@ -126,6 +126,10 @@ public:
                                                  isp_->offline_input_node(),
                                                  1920, 1080,
                                                  config_.pool_buffers));
+                // Start RKAiq only after the DDR input and both ISPP outputs
+                // are configured/open. No frame is submitted until the final
+                // ISP-mainpath -> VP binding below.
+                isp_->start();
             }
 
             // Main path stays NV12 in DMA-BUF from VI through RGA into VENC.

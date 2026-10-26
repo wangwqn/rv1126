@@ -99,9 +99,29 @@ The second option is now implemented as a reversible userspace candidate:
   boot partition are unchanged.
 
 The ARM application and RKAiq library compile successfully, portable host
-tests pass, and the release bundle passes SHA-256 verification. Board runtime
-validation is still pending because the USB ADB transport remains `offline`
-after the prior driver-wedge experiment. The candidate must remain isolated
-from the normal service until a clean power cycle/reconnect permits the staged
-no-AI test, `/proc/rkispp1` TNR/ErrCnt verification, TCP dual-stream frame
-count, and thermal/long-run regression.
+tests pass, and the release bundle passes SHA-256 verification.
+
+## Board trials and startup-order correction
+
+The first board trial remained responsive but produced no encoder frames. It
+proved that setting `RKAIQ_ISPP_TARGET` from `main()` is too late: RKAiq maps
+the media graph in its ELF constructor, before application code runs. The r2
+candidate therefore injects both override variables in the launcher before
+`exec()` and exports a query function; the application refuses to touch the
+media graph unless the library confirms target 1 was actually applied.
+
+The query initially rejected startup and exposed a second detail: this board's
+IMX415 reaches ISP0 through CIF, while the first override covered only sensors
+directly attached to ISP. The r3 library covers both enumeration branches and
+confirmed the target, but starting it wedged the old driver and made ADB
+`offline`. Source inspection shows that this driver does implement TNR 2to1
+for `INP_DDR`; the remaining difference is ordering. The old application
+started RKAiq's ISPP parameter/statistics streams before RKMedia had opened the
+DDR input and output nodes.
+
+The current r4 candidate therefore prepares RKAiq first, opens/configures
+`/dev/video37`, `/dev/video39`, and `/dev/video40`, starts RKAiq only after
+those queues exist, and binds ISP mainpath to VP last. It is locally compiled,
+passes the host tests and package hashes, but requires another clean power
+cycle before board validation. Until that test passes, the candidate remains
+isolated from the normal service and must not be promoted to `main`.

@@ -1,0 +1,39 @@
+--- a/hwi/isp20/CamHwIsp20.cpp
++++ b/hwi/isp20/CamHwIsp20.cpp
+@@ -1003,10 +1003,33 @@
+                                 s_full_info->cif_info->model_str, isp_info->linked_vicap);
+                 if (strcmp(s_full_info->cif_info->model_str, isp_info->linked_vicap) == 0) {
+                     s_full_info->isp_info = &CamHwIsp20::mIspHwInfos.isp_info[i];
+-                    s_full_info->ispp_info = &CamHwIsp20::mIspHwInfos.ispp_info[i];
+-                    LOGI_CAMHW_SUBM(ISP20HW_SUBM, "vicap link to isp(%d) to ispp(%d)\n",
++                    const int requested_ispp = get_ispp_target_override();
++                    const int desired_ispp = requested_ispp >= 0
++                                                 ? requested_ispp
++                                                 : s_full_info->isp_info->model_idx;
++                    for (uint32_t ispp_slot = 0; ispp_slot < MAX_CAM_NUM;
++                            ++ispp_slot) {
++                        rk_aiq_ispp_t* candidate =
++                            &CamHwIsp20::mIspHwInfos.ispp_info[ispp_slot];
++                        if (candidate->model_idx == desired_ispp &&
++                                strlen(candidate->media_dev_path)) {
++                            s_full_info->ispp_info = candidate;
++                            break;
++                        }
++                    }
++                    if (!s_full_info->ispp_info) {
++                        LOGE_CAMHW_SUBM(ISP20HW_SUBM,
++                                        "requested ispp(%d) is unavailable\n",
++                                        desired_ispp);
++                        continue;
++                    }
++                    if (requested_ispp >= 0)
++                        g_applied_ispp_target = s_full_info->ispp_info->model_idx;
++                    LOGI_CAMHW_SUBM(ISP20HW_SUBM,
++                                    "vicap link to isp(%d), parameters/stats to ispp(%d)%s\n",
+                                     s_full_info->isp_info->model_idx,
+-                                    s_full_info->ispp_info->model_idx);
++                                    s_full_info->ispp_info->model_idx,
++                                    requested_ispp >= 0 ? " (override)" : "");
+                     CamHwIsp20::mCamHwInfos[s_full_info->sensor_name]->sensor_info.binded_strm_media_idx =
+                         atoi(s_full_info->ispp_info->media_dev_path + strlen("/dev/media"));
+                     LOGI_CAMHW_SUBM(ISP20HW_SUBM, "sensor %s adapted to pp media %d:%s\n",

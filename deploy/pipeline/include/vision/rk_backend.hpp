@@ -49,6 +49,7 @@ class Isp : Noncopyable {
 public:
     explicit Isp(const Config& c);
     ~Isp();
+    void start();
     const std::string& offline_main_node() const;
     const std::string& offline_sub_node() const;
     const std::string& offline_input_node() const;
@@ -56,6 +57,7 @@ private:
     int camera_;
     void* context_ = nullptr;
     bool started_ = false;
+    int fps_ = 30;
     std::unique_ptr<OfflineIsppTopology> offline_topology_;
 };
 

@@ -443,7 +443,7 @@ Frame get_buffer(MOD_ID_E module, int channel, int timeout_ms) {
 MediaSystem::MediaSystem() { check_rk(RK_MPI_SYS_Init(), "SYS Init"); }
 // This RKMedia API has no SYS_Exit. Channel owners perform teardown.
 
-Isp::Isp(const Config& c) : camera_(c.camera) {
+Isp::Isp(const Config& c) : camera_(c.camera), fps_(c.fps) {
     if (c.iq_dir.empty()) return;
 #ifdef RKAIQ
     // RKAiq uses HDR_MODE during initialization even though prepare() also
@@ -455,11 +455,18 @@ Isp::Isp(const Config& c) : camera_(c.camera) {
         // the stock library: it would still control rkispp0 and can wedge this
         // BSP when frames arrive through a DDR input.
         using OverrideVersion = int (*)();
+        using AppliedTarget = int (*)();
         auto* version = reinterpret_cast<OverrideVersion>(
             ::dlsym(RTLD_DEFAULT, "rk_aiq_ispp_target_override_version"));
-        if (!version || version() < 1)
+        auto* applied_target = reinterpret_cast<AppliedTarget>(
+            ::dlsym(RTLD_DEFAULT, "rk_aiq_ispp_target_override_applied"));
+        if (!version || version() < 2 || !applied_target || applied_target() != 1)
             throw std::runtime_error(
-                "4k-ispp-1080 requires the bundled patched librkaiq.so");
+                "4k-ispp-1080 requires the candidate launcher to preload "
+                "the patched RKAiq library with ISPP target 1");
+        std::fprintf(stderr,
+                     "camera: RKAiq preload confirmed ISPP target 1 (override ABI v%d)\n",
+                     version());
         check_rk(::setenv("RKAIQ_ISPP_TARGET", "1", 1),
                  "ISP set ISPP target");
         check_rk(::setenv("RKAIQ_ISPP_INPUT_SIZE", "1920x1080", 1),
@@ -506,12 +513,12 @@ Isp::Isp(const Config& c) : camera_(c.camera) {
             std::fprintf(stderr,
                          "camera: ALSC bypassed: IQ file has no calibrated 1920x1080 table\n");
         }
-        check_rk(rk_aiq_uapi_sysctl_start(context), "ISP Start");
-        started_ = true;
-        frameRateInfo_t rate{};
-        rate.mode = OP_MANUAL;
-        rate.fps = c.fps;
-        check_rk(rk_aiq_uapi_setFrameRate(context, rate), "ISP SetFrameRate");
+        // The offline DDR input and both ISPP output nodes must be opened
+        // before RKAiq starts the ISPP parameter/statistics queues. The direct
+        // ISP bridge has a producer during RKAiq start, but an offline VP
+        // pipeline does not receive its first buffer until the final binding.
+        if (c.sensor_mode != "4k-ispp-1080")
+            start();
     } catch (...) {
         if (started_) rk_aiq_uapi_sysctl_stop(context, false);
         rk_aiq_uapi_sysctl_deinit(context);
@@ -521,6 +528,25 @@ Isp::Isp(const Config& c) : camera_(c.camera) {
     }
 #else
     throw std::runtime_error("ISP support disabled at build time; use --no-isp with an externally managed ISP");
+#endif
+}
+
+void Isp::start() {
+#ifdef RKAIQ
+    auto* context = static_cast<rk_aiq_sys_ctx_t*>(context_);
+    if (!context || started_) return;
+    check_rk(rk_aiq_uapi_sysctl_start(context), "ISP Start");
+    started_ = true;
+    try {
+        frameRateInfo_t rate{};
+        rate.mode = OP_MANUAL;
+        rate.fps = fps_;
+        check_rk(rk_aiq_uapi_setFrameRate(context, rate), "ISP SetFrameRate");
+    } catch (...) {
+        rk_aiq_uapi_sysctl_stop(context, false);
+        started_ = false;
+        throw;
+    }
 #endif
 }
 
