@@ -119,9 +119,26 @@ for `INP_DDR`; the remaining difference is ordering. The old application
 started RKAiq's ISPP parameter/statistics streams before RKMedia had opened the
 DDR input and output nodes.
 
-The current r4 candidate therefore prepares RKAiq first, opens/configures
+The r4 candidate therefore prepares RKAiq first, opens/configures
 `/dev/video37`, `/dev/video39`, and `/dev/video40`, starts RKAiq only after
-those queues exist, and binds ISP mainpath to VP last. It is locally compiled,
-passes the host tests and package hashes, but requires another clean power
-cycle before board validation. Until that test passes, the candidate remains
-isolated from the normal service and must not be promoted to `main`.
+those queues exist, and binds ISP mainpath to VP last. It compiled locally and
+passed the host tests and package hashes. The board trial still made ADB go
+`offline`, so application ordering alone is not sufficient. The candidate
+remains isolated from the normal service and must not be promoted to `main`.
+
+## RKISPP v1.6.2 driver finding
+
+The board SDK is immediately before a sequence of Rockchip's own
+`develop-4.19` RKISPP fixes. Five commits apply cleanly to this exact source:
+
+- monitor state is reinitialized and checked before recovery work;
+- scale output buffers are checked at frame start;
+- scaler DMA is disabled when no output buffer is available;
+- the obsolete TNR IIR first-frame DMA shortcut is removed.
+
+These changes directly cover the failure window seen when independent DDR
+input, TNR and two scaler outputs start together. They are packaged as
+`patches/kernel/0001-rkispp-v1.7-buffer-and-tnr-first-frame-fixes.patch`.
+`scripts/build-kernel-rkispp-backport.sh` can report, apply, reverse or build
+the candidate. It deliberately has no flash command. A serial console or a
+verified loader-mode recovery path is required before testing the boot image.
