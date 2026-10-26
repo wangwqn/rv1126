@@ -61,10 +61,10 @@ bash scripts/test_rtsp_tcp.sh <开发板当前IP> 60
 为避免启动 PTS 跳变干扰，脚本按真实墙钟区间统计解码帧。结束时的
 `exit_code=143` 是脚本到达指定时间后主动停止 ffprobe，不是异常；以最终
 `PASS/FAIL`、帧数和错误扫描为准。
-当前全视场正式配置为29 FPS，验收时显式传第三参数：
+当前正式配置为 2×2 binning 1080p@30，验收时使用默认的30 FPS：
 
 ```bash
-bash scripts/test_rtsp_tcp.sh <开发板当前IP> 60 29
+bash scripts/test_rtsp_tcp.sh <开发板当前IP> 60 30
 ```
 
 ```bash
@@ -94,10 +94,11 @@ bash scripts/test_rtsp_av.sh <开发板当前IP> 10
 每次先只放一个，靠近镜头且完整可见，光照充足。然后测试多目标、遮挡、远近和背景变化。
 
 记录：是否检测到、类别是否正确、框是否贴合、名称是否可读、移走物品后框是否消失。
-现版本置信度阈值 0.35；不要把降低阈值后出现更多框当成精度提高。
+正式启动脚本的置信度阈值为0.25（程序内建值为0.35）；不要把降低
+阈值后出现更多框当成精度提高。
 当前已观察到杯子/瓶子混淆，书籍和部分水果较弱，需继续训练改进。
 
-23类候选已完成板端公开图片和短时实时流验证，但还需用实物逐类测试：人、背包、
+23类正式模型已完成板端公开图片和短时实时流验证，但还需用实物逐类测试：人、背包、
 手提包、碗、三明治、椅子、沙发、盆栽、餐桌、遥控器、时钟和剪刀。
 执行 `bash scripts/push_objects23_candidate.sh` 只会上传到
 `/root/rv1126_objects23_candidate`，不会覆盖已验证的默认服务。
@@ -150,8 +151,8 @@ adb shell '/root/rv1126_objects/rv1126-object restart'
 adb shell 'tail -100 /tmp/rv1126-object.log'
 ```
 
-正式管理脚本默认是4K全视场传感器模式、29 FPS、旋转270度和阈值0.25；程序
-直接运行时的内建默认仍是1080p传感器模式、30 FPS和阈值0.35。如要安装为Buildroot
+正式管理脚本默认是 2×2 binning 1080p、30 FPS、旋转270度、阈值0.25、
+最多8个OSD框，AI、OSD和音频全部开启。如要安装为Buildroot
 开机服务（可选，部署脚本不会自动开启）：
 
 ```bash
@@ -166,12 +167,15 @@ cd /root/rv1126_objects
 ./rkmedia_object_detection_rtsp \
   --sensor-mode 1080p \
   --width 1920 --height 1080 --sub-width 640 --sub-height 360 \
-  --fps 30 --ai-fps 3 --bitrate 4000000 --sub-bitrate 600000 \
+  --fps 30 --ai-fps 3 --max-osd-boxes 8 \
+  --bitrate 4000000 --sub-bitrate 600000 \
   --pool-buffers 8 --packet-queue 8 --rotation 270 --threshold 0.35 \
   --audio-device plughw:0,0 --audio-source main --audio-period-ms 20
 ```
 
-保持这个终端运行；退出按 Ctrl+C。不要使用 --no-ai 或 --no-osd。
+保持这个终端运行；退出按 Ctrl+C。不要使用 `--no-ai`、`--no-osd`
+或 `--no-audio`。多目标验收时同时放入至少3件已知物品，日志中
+`osd(boxes=N, truncated=M)` 的 `N` 应大于1且不大于8。
 前台启动后日志显示在当前终端，不再写入先前的后台日志文件。
 
 程序不主动开关 TNR，由板端 IQ 配置决定。默认 `--sensor-mode 1080p` 在 RKAiq
@@ -189,7 +193,7 @@ adb shell 'cat /proc/rkispp0'
 
 v1.8.7开始，AI专用RGA2在输入端直接由视频帧率限制到 `--ai-fps`。日志中
 `ai(source=..., sampled=...)` 两项应基本相等，并按默认约3次/秒增长；如果仍按
-29/30次/秒增长，说明运行的不是当前二进制。全视场29 FPS验证记录见
+29/30次/秒增长，说明运行的不是当前二进制。输入限速历史对照见
 `artifacts/ai-rga-rate-limit-validation-20261025.md`。
 
 部署新版本并等待摄像头管线通过健康检查：

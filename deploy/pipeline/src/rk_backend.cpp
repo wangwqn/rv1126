@@ -687,103 +687,72 @@ void VencChannel::send(const Frame& frame) {
 }
 
 HardwareCompositor::HardwareCompositor(int rga_channel, const Config& config)
-    : channel_(rga_channel), height_(config.output_height()), enabled_(config.osd) {
+    : channel_(rga_channel), height_(config.output_height()),
+      max_boxes_(config.max_osd_boxes), enabled_(config.osd) {
     if (enabled_) painter_.reset(new object_detection::LabelPainter(config.labels));
     disable_all();
 }
 HardwareCompositor::~HardwareCompositor() { disable_all(); }
 void HardwareCompositor::disable_slot(int slot) noexcept {
-    const int first = slot * 4;
     static std::uint32_t transparent = 0;
-    OSD_REGION_INFO_S label{};
-    label.enRegionId = static_cast<OSD_REGION_ID_E>(first);
-    label.u8Enable = 0;
+    OSD_REGION_INFO_S region{};
+    region.enRegionId = static_cast<OSD_REGION_ID_E>(slot);
+    region.u8Enable = 0;
     BITMAP_S bitmap{};
     bitmap.enPixelFormat = PIXEL_FORMAT_ARGB_8888;
     bitmap.u32Width = bitmap.u32Height = 1;
     bitmap.pData = &transparent;
-    warn_rk(RK_MPI_RGA_RGN_SetBitMap(channel_, &label, &bitmap),
-            "RGA disable label");
-    for (int id = first + 1; id < first + 4; ++id) {
-        OSD_REGION_INFO_S edge{};
-        edge.enRegionId = static_cast<OSD_REGION_ID_E>(id);
-        edge.u8Enable = 0;
-        warn_rk(RK_MPI_RGA_RGN_SetCover(channel_, &edge, nullptr),
-                "RGA disable box edge");
-    }
-    if (current_labels_[slot])
-        retired_labels_[retired_index_++ % retired_labels_.size()] =
-            current_labels_[slot];
-    current_labels_[slot].reset();
+    warn_rk(RK_MPI_RGA_RGN_SetBitMap(channel_, &region, &bitmap),
+            "RGA disable box overlay");
+    if (current_overlays_[slot])
+        retired_overlays_[retired_index_++ % retired_overlays_.size()] =
+            current_overlays_[slot];
+    current_overlays_[slot].reset();
 }
 void HardwareCompositor::disable_all() noexcept {
-    disable_slot(0);
-    disable_slot(1);
+    for (std::size_t slot = 0; slot < region_count_; ++slot)
+        disable_slot(static_cast<int>(slot));
 }
 std::size_t HardwareCompositor::update(const std::vector<Box>& boxes) {
     if (!enabled_) return 0;
-    const std::size_t count = std::min<std::size_t>(boxes.size(), 2);
-    COVER_INFO_S cover{};
-    cover.enPixelFormat = PIXEL_FORMAT_ARGB_8888;
-    cover.u32Color = 0xff00ff00;
+    const std::size_t count = std::min<std::size_t>(
+        boxes.size(), static_cast<std::size_t>(max_boxes_));
     for (std::size_t slot = 0; slot < count; ++slot) {
         const Box& b = boxes[slot];
         const int box_width = b.right - b.left;
         const int box_height = b.bottom - b.top;
-        const int thickness = std::min(4, std::min(box_width, box_height));
-        if (box_width <= 0 || box_height <= 0 || thickness <= 0) {
+        if (box_width <= 0 || box_height <= 0) {
             disable_slot(static_cast<int>(slot));
             continue;
         }
-        const bool above = b.top >= 28;
-        const int label_y = std::max(0, std::min(above ? b.top - 28 : b.top,
-                                                 height_ - 32));
-        auto label = std::make_shared<cv::Mat>(
-            painter_->render_top_strip(box_width, b, above));
-        if (!label->isContinuous() || label->type() != CV_8UC4)
-            throw std::runtime_error("Label bitmap is not tightly packed BGRA");
-        if (current_labels_[slot])
-            retired_labels_[retired_index_++ % retired_labels_.size()] =
-                current_labels_[slot];
-        current_labels_[slot] = label;
+        const bool above = b.top >= 32;
+        auto overlay = std::make_shared<cv::Mat>(
+            painter_->render_box_overlay(box_width, box_height, b, above));
+        if (!overlay->isContinuous() || overlay->type() != CV_8UC4 ||
+            overlay->rows > height_)
+            throw std::runtime_error("Box overlay is not a valid packed BGRA bitmap");
+        if (current_overlays_[slot])
+            retired_overlays_[retired_index_++ % retired_overlays_.size()] =
+                current_overlays_[slot];
+        current_overlays_[slot] = overlay;
 
         OSD_REGION_INFO_S region{};
-        region.enRegionId = static_cast<OSD_REGION_ID_E>(slot * 4);
+        region.enRegionId = static_cast<OSD_REGION_ID_E>(slot);
         region.u32PosX = static_cast<RK_U32>(b.left);
-        region.u32PosY = static_cast<RK_U32>(label_y);
-        region.u32Width = static_cast<RK_U32>(box_width);
-        region.u32Height = 32;
+        region.u32PosY = static_cast<RK_U32>(above ? b.top - 32 : b.top);
+        region.u32Width = static_cast<RK_U32>(overlay->cols);
+        region.u32Height = static_cast<RK_U32>(overlay->rows);
         region.u8Enable = 1;
         BITMAP_S bitmap{};
         bitmap.enPixelFormat = PIXEL_FORMAT_ARGB_8888;
         bitmap.u32Width = region.u32Width;
         bitmap.u32Height = region.u32Height;
-        bitmap.pData = label->data;
+        bitmap.pData = overlay->data;
         check_rk(RK_MPI_RGA_RGN_SetBitMap(channel_, &region, &bitmap),
-                 "RGA set label/top edge");
-
-        const int rects[3][4] = {
-            {b.left, b.bottom - thickness, box_width, thickness},
-            {b.left, b.top, thickness, box_height},
-            {b.right - thickness, b.top, thickness, box_height}
-        };
-        for (int edge_index = 0; edge_index < 3; ++edge_index) {
-            const auto& rect = rects[edge_index];
-            OSD_REGION_INFO_S edge{};
-            edge.enRegionId = static_cast<OSD_REGION_ID_E>(slot * 4 + edge_index + 1);
-            edge.u32PosX = static_cast<RK_U32>(rect[0]);
-            edge.u32PosY = static_cast<RK_U32>(rect[1]);
-            edge.u32Width = static_cast<RK_U32>(rect[2]);
-            edge.u32Height = static_cast<RK_U32>(rect[3]);
-            edge.u8Enable = 1;
-            check_rk(RK_MPI_RGA_RGN_SetCover(channel_, &edge, &cover),
-                     "RGA set box edge");
-        }
+                 "RGA set box/label overlay");
     }
-    for (std::size_t slot = count; slot < 2; ++slot)
+    for (std::size_t slot = count; slot < region_count_; ++slot)
         disable_slot(static_cast<int>(slot));
-    // Retain four previous generations so an in-flight RGA frame cannot see
-    // freed label pixels while the region pointer is being replaced.
     return count;
 }
 

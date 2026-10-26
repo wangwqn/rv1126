@@ -63,6 +63,7 @@ void test_config_parsing_and_validation() {
     const auto defaults = parse({});
     check(defaults.fps == 30 && defaults.ai_fps == 3 &&
               defaults.bitrate == 4000000 && defaults.sub_bitrate == 600000 &&
+              defaults.max_osd_boxes == 8 &&
               defaults.sensor_mode == "1080p" && defaults.audio &&
               defaults.audio_device == "plughw:0,0" && defaults.audio_period_ms == 20,
           "board-validated low-latency defaults are preserved");
@@ -74,6 +75,7 @@ void test_config_parsing_and_validation() {
                                    "--sensor-mode", "current",
                                    "--audio-source", "hands-free",
                                    "--audio-period-ms", "40",
+                                   "--max-osd-boxes", "6",
                                    "--threshold", "0.75", "--no-ai", "--no-osd",
                                    "--no-audio", "--no-isp",
                                    "--latency-csv", "/tmp/latency.csv"});
@@ -82,6 +84,7 @@ void test_config_parsing_and_validation() {
           "rotation swaps configured output dimensions");
     check(configured.fps == 30 && configured.ai_fps == 6 &&
               configured.rtsp_port == 9554 && configured.threshold == 0.75f &&
+              configured.max_osd_boxes == 6 &&
               configured.sensor_mode == "current" &&
               configured.audio_source == "hands-free" && configured.audio_period_ms == 40,
           "numeric command-line settings are parsed");
@@ -117,6 +120,8 @@ void test_config_parsing_and_validation() {
                    "unsupported audio source is rejected");
     expect_invalid([] { parse({"--audio-period-ms", "7"}); },
                    "too-small PCMA packets are rejected");
+    expect_invalid([] { parse({"--max-osd-boxes", "9"}); },
+                   "RGA OSD region capacity is enforced");
     expect_invalid([] { parse({"--bitrate", "999999999999999999999"}); },
                    "integer overflow is rejected");
 }

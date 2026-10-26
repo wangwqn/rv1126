@@ -14,7 +14,7 @@
 ```bash
 git clone git@github.com:wangwqn/rv1126.git
 cd rv1126
-git checkout v1.8.7
+git checkout v1.8.8
 bash scripts/verify_checkout.sh
 ```
 
@@ -65,10 +65,11 @@ adb shell '/root/rv1126_objects/rv1126-object health'
 VI 使用 V4L2 DMABUF，主、子视频
 分别经 RGA NV12 硬件通道直绑 VENC；第三个低分辨率 RGA BGR 通道只供 RKNN，
 并在 RGA 输入端按 `ai-fps` 硬件抽帧，默认只转换 3 FPS，不再转换后丢弃其余帧。
-主流不再转成整帧 RGB，也不再用 OpenCV 修改 1080P 像素。中文名和置信度只在
-AI 结果更新时生成小型透明 ARGB 标签条，再由 RGA 与三条硬件边组成标注框。
-RV1126 旧 RGA API 只有 8 个区域，因此实时显示最多 2 个带名称框，更多结果计入
-`osd.truncated`；检测本身仍保留完整结果。
+主流不再转成整帧 RGB，也不再用 OpenCV 修改 1080P 像素。每个检测结果
+只在 AI 更新时生成一张局部透明 ARGB 位图，位图同时包含四条框边、
+中文类别名和置信度，再由 RGA 叠加到主流。RV1126 旧 RGA API 的8个区域
+因此可每帧显示置信度最高的8个带名称框，可用 `--max-osd-boxes 1..8`
+调整；超出部分计入 `osd.truncated`，检测结果本身仍最多保留100个。
 
 音频默认由独立 ALSA 线程从 `plughw:0,0` 采集 PCM S16LE 8 kHz 双声道，
 下混成单声道并以 20 ms 为单位编码为 G.711A/PCMA。主流和子流都包含同一条
@@ -165,10 +166,10 @@ cd /home/alientek/桌面/rv1126_object_training
 
 开发板在线后可运行 `bash scripts/push_objects23_candidate.sh`，它会上传到
 `/root/rv1126_objects23_candidate/`，不会替换 `/root/rv1126_objects/`。
-正式目录中的 `rv1126-object start` 默认采用4K传感器全视场采集，再由ISPP输出
-1920×1080主流和640×360子流，并统一整形为稳定29 FPS。30秒双流各869帧、
-28.97 FPS、零解码错误，服务端 `pts_gap=0`；它不宣称达到30 FPS。性能数据见
-`artifacts/full-fov-29fps-validation-20261024.md`。
+正式目录中的 `rv1126-object start` 默认采用 IMX415 2×2 binning，以
+1944×1097 RAW12 输出并对齐到1920×1080有效记录区域；主、子流为
+1920×1080/640×360、30 FPS，AI、OSD、音频、TNR 2to1、NR和SHARP全部开启。
+真机短测记录见 `artifacts/imx415-binning-1080-validation-20261026.md`。
 不要将主流直接改成3840×2160：即使关闭AI/OSD、使用6 Mbps，真机ISPP仍只有
 约53 ms/帧，TCP码流同时出现H.264损坏和CSeq错误；失败基线见
 `artifacts/native-4k-output-validation-20261024.md`。

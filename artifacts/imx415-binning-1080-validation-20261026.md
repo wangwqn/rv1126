@@ -86,10 +86,34 @@ rtsp://192.168.137.56:8554/live/main_stream
 rtsp://192.168.137.56:8554/live/sub_stream
 ```
 
+## 完整功能复测
+
+随后将正式 v1.8.8 以无参数方式重启，AI、OSD、音频、TNR、NR和
+SHARP全部开启。默认命令行确认为 `--sensor-mode 1080p --fps 30
+--ai-fps 3 --max-osd-boxes 8`。真机结果：
+
+```text
+health: 3 s main_delta=91/92, sub_delta=92
+AI: source=15 sampled=15 completed=15 stale_drop=0
+OSD: boxes=0..6 truncated=0（随画面检测结果变化）
+audio: captured=250 sent=250 queue_drop=0 recoveries=0
+RTSP queue high water: 2/8
+RKISPP ErrCnt: 0
+```
+
+通过 `wang` 热点直连 RTSP（未使用 ADB forward），`ffprobe` 确认主流包含
+H.264 1080×1920（旋转270度）、30/1 FPS视频和8 kHz单声道PCMA音频。
+
+v1.8.8 将每个框由4个RGA区域改为1个局部透明ARGB位图区域，因此
+可显示最多8个“四边+中文名称+置信度”框。10秒Wi-Fi RTSP录制
+共288帧，解码画面已肉眼确认多框同时叠加，日志最高记录 `osd(boxes=6,
+truncated=0)`。验证帧保存为 `device-v188-multibox-live.png`，可见显示器/电视、
+杯子/瓶子、鼠标和键盘等多个中文框。同一容器被同时识别成杯子和瓶子
+属于模型跨类别误检，需补充数据训练，不是OSD丢框。
+
 ## 当前限制
 
 - 板载 IQ 文件没有该 1920x1080 模式的镜头阴影标定，程序暂时旁路 ALSC；正式
   产品仍应对当前镜头制作对应 IQ 标定。
-- 本次是视频路径验证，AI、OSD、音频关闭。完整功能仍需补做 Wi-Fi 双流长稳测试。
-- 正式管理脚本默认值尚未切换；本次通过显式 `--sensor-mode 1080p --fps 30`
-  启动，避免一次短测直接改变开机行为。
+- 完整功能已完成短测，Wi-Fi双流30分钟/24小时长稳仍待执行。
+- 正式管理脚本已切换到 binning 1080p@30，但未自动安装开机自启。

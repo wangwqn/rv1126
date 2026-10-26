@@ -57,7 +57,8 @@ adb shell '/root/rv1126_objects/rv1126-object install-autostart'
 ```
 
 `health` 会在采样窗口内确认主/子视频帧和音频包计数增长，并检查 RTSP 监听、
-ISPP `ErrCnt` 和 TNR。宿主机可执行 `bash scripts/rollback_device.sh` 恢复上一次
+ISPP `ErrCnt`、TNR，同时拒绝以 `--no-ai`、`--no-osd` 或 `--no-audio` 启动
+的进程。宿主机可执行 `bash scripts/rollback_device.sh` 恢复上一次
 已验证部署；回滚前会先校验全部 `.previous` 文件，失败时不停止当前服务，
 交换后会等待板端健康检查通过。
 
@@ -66,15 +67,16 @@ ISPP `ErrCnt` 和 TNR。宿主机可执行 `bash scripts/rollback_device.sh` 恢
 两条 Session 都默认包含 8 kHz 单声道 G.711A/PCMA 音轨。程序从
 `plughw:0,0` 采集双声道 PCM、选择 Main Mic、下混并以 20 ms 分包；
 `--no-audio` 可关闭。执行 `bash scripts/test_rtsp_av.sh 开发板IP 10` 可同时验收。
-当前主流默认4 Mbps、子流默认600 kbps。正式管理脚本默认以 `--sensor-mode 4k`
-选择IMX415 3864×2192 RAW10、有效裁剪3840×2160，再输出1080p/360p并整形为
-稳定29 FPS，TNR仍由板端IQ配置保持开启。30秒双流各869帧、零错误且服务端
-`pts_gap=0`。程序直接调用时的内建传感器默认仍是1080p；旧4K输入在标称30 FPS、
-4/5 Mbps时都约为29.5 FPS并累计PTS缺口。1080p传感器模式真机连续
-超过 17,000 帧/路仍为 `pts_gap=0`，ADB TCP 双流 60 秒各解码 1800 帧。
+当前主流默认4 Mbps、子流默认600 kbps。正式管理脚本默认选择
+IMX415 1944×1097 RAW12 2×2 binning，对齐1920×1080有效区域，输出
+1080p/360p@30；TNR 2to1、NR、SHARP、AI、OSD和音频默认开启。
+旧4K RAW10输入可用 `--sensor-mode 4k` 回退，但实测约29.x FPS并累计PTS缺口。
+1080p binning 模式真机连续超过17,000帧/路仍为 `pts_gap=0`，ADB TCP双流
+60秒各解码1800帧；v1.8.8全功能无参数启动后再次实测3秒各墑长约92帧。
 30 分钟/24 小时长稳定性验收仍待完成。
 板载 IQ 缺少 1080p ALSC 标定，因此该模式明确旁路 ALSC；正式产品应补做镜头标定。
-可用 `--sensor-mode 4k` 回退旧模式，当前发布程序没有 `--disable-tnr` 参数。
+当前发布程序没有 `--disable-tnr` 参数。OSD默认按置信度显示最多8个
+中文名称+置信度检测框，可用 `--max-osd-boxes 1..8` 调整。
 8 Mbps 在板载旧版 `librtsp` 上仍是已知不稳定配置。
 
 AI专用RGA通道在输入端使用RKMedia帧率控制，只将默认3 FPS送入NV12→BGR转换，

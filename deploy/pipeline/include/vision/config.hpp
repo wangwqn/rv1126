@@ -38,6 +38,9 @@ struct Config {
     int result_ttl_ms = 300;
     int stall_timeout_ms = 5000;
     int ai_delay_ms = 0;
+    // RKMedia exposes eight RGA OSD regions. Each detection uses one
+    // transparent ARGB bitmap containing its label and all four box edges.
+    int max_osd_boxes = 8;
     float threshold = 0.35f;
     bool ai = true, osd = true;
     // Opt-in because percentile collection adds a small mutex/copy overhead.
@@ -77,6 +80,7 @@ struct Config {
         if (bitrate < 10000 || sub_bitrate < 10000 || rtsp_port < 1 || rtsp_port > 65535 ||
             result_ttl_ms < 1 || result_ttl_ms > 10000 || stall_timeout_ms < 1000 ||
             stall_timeout_ms > 60000 || ai_delay_ms < 0 || ai_delay_ms > 5000 ||
+            max_osd_boxes < 1 || max_osd_boxes > 8 ||
             !std::isfinite(threshold) || threshold <= 0 || threshold > 1 || camera < 0 || camera > 7)
             throw std::invalid_argument("invalid rate, port, timeout, confidence or camera setting");
         if (main_node.empty() || sub_node.empty() || main_node == sub_node ||
@@ -150,6 +154,7 @@ inline Config parse_config(int argc, char** argv) {
         else if (key == "--result-ttl-ms") c.result_ttl_ms = parse_integer(value);
         else if (key == "--stall-timeout-ms") c.stall_timeout_ms = parse_integer(value);
         else if (key == "--ai-delay-ms") c.ai_delay_ms = parse_integer(value);
+        else if (key == "--max-osd-boxes") c.max_osd_boxes = parse_integer(value);
         else throw std::invalid_argument("unknown option: " + key);
     }
     c.validate();
@@ -163,6 +168,7 @@ inline void print_usage(std::ostream& out) {
            "  --main-node rkispp_scale0 --sub-node rkispp_scale1 --camera 0\n"
            "  --width 1920 --height 1080 --sub-width 640 --sub-height 360\n"
            "  --rotation 0 --fps 30 --ai-fps 3 --threshold 0.35\n"
+           "  --max-osd-boxes 8 (highest-confidence detections, RGA overlay)\n"
            "  --bitrate 4000000 --sub-bitrate 600000 --pool-buffers 8\n"
            "  --packet-queue 8\n"
            "  --audio-device plughw:0,0 --audio-mixer hw:0\n"

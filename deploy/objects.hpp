@@ -41,6 +41,11 @@ public:
     // transparent pixels leave the NV12 video untouched.
     cv::Mat render_top_strip(int width, const vision::Box& box,
                              bool line_at_bottom) const;
+    // Creates one transparent BGRA region containing the class/confidence
+    // label and all four rectangle edges. One hardware region can therefore
+    // represent one complete detection instead of consuming four regions.
+    cv::Mat render_box_overlay(int width, int height, const vision::Box& box,
+                               bool label_above) const;
     // Offline image-test helper; the real-time RTSP path does not call this.
     void draw(cv::Mat& bgr, const std::vector<vision::Box>& boxes) const;
 private:

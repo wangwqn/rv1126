@@ -25,13 +25,14 @@ start_service() {
     [ -s "$APP_DIR/objects.rknn" ] || { echo "Missing model: $APP_DIR/objects.rknn" >&2; return 1; }
     if [ "$#" -eq 0 ]; then
         set -- \
-            --sensor-mode 4k \
+            --sensor-mode 1080p \
             --width 1920 --height 1080 \
             --sub-width 640 --sub-height 360 \
-            --fps 29 --ai-fps 3 \
+            --fps 30 --ai-fps 3 --max-osd-boxes 8 \
             --bitrate 4000000 --sub-bitrate 600000 \
             --pool-buffers 8 --packet-queue 8 \
-            --rotation 270 --threshold 0.25
+            --rotation 270 --threshold 0.25 \
+            --audio-device plughw:0,0 --audio-source main --audio-period-ms 20
     fi
     cd "$APP_DIR"
     : >"$LOG_FILE"
@@ -100,6 +101,12 @@ health_service() {
         return 2
     }
     pid=$(running_pid) || { echo "Unhealthy: service is not running" >&2; return 1; }
+    runtime_args=$(tr '\000' ' ' <"/proc/$pid/cmdline" 2>/dev/null || true)
+    case " $runtime_args " in
+        *" --no-ai "*) echo "Unhealthy: AI is disabled" >&2; return 1 ;;
+        *" --no-osd "*) echo "Unhealthy: OSD is disabled" >&2; return 1 ;;
+        *" --no-audio "*) echo "Unhealthy: audio is disabled" >&2; return 1 ;;
+    esac
     netstat -lnt 2>/dev/null | grep -q ':8554[[:space:]]' || {
         echo "Unhealthy: RTSP TCP port 8554 is not listening" >&2
         return 1
@@ -147,7 +154,7 @@ health_service() {
     }
     version=unknown
     [ ! -s "$APP_DIR/VERSION" ] || version=$(tr -d '[:space:]' <"$APP_DIR/VERSION")
-    echo "Healthy: version=$version pid=$pid interval=${interval}s main_delta=$((main_after-main_before)) sub_delta=$((sub_after-sub_before)) audio_packets=$audio_captured ErrCnt=$errors TNR=ON RTSP=8554"
+    echo "Healthy: version=$version pid=$pid interval=${interval}s main_delta=$((main_after-main_before)) sub_delta=$((sub_after-sub_before)) audio_packets=$audio_captured AI=ON OSD=ON AUDIO=ON ErrCnt=$errors TNR=ON RTSP=8554"
 }
 
 command=${1:-}
@@ -162,13 +169,14 @@ case "$command" in
         cd "$APP_DIR"
         if [ "$#" -eq 0 ]; then
             set -- \
-                --sensor-mode 4k \
+                --sensor-mode 1080p \
                 --width 1920 --height 1080 \
                 --sub-width 640 --sub-height 360 \
-                --fps 29 --ai-fps 3 \
+                --fps 30 --ai-fps 3 --max-osd-boxes 8 \
                 --bitrate 4000000 --sub-bitrate 600000 \
                 --pool-buffers 8 --packet-queue 8 \
-                --rotation 270 --threshold 0.25
+                --rotation 270 --threshold 0.25 \
+                --audio-device plughw:0,0 --audio-source main --audio-period-ms 20
         fi
         exec "$APP" "$@"
         ;;

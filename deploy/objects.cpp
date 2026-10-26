@@ -167,6 +167,33 @@ cv::Mat LabelPainter::render_top_strip(int width, const vision::Box& box,
                   cv::Scalar(0, 255, 0, 255), cv::FILLED);
     return strip;
 }
+cv::Mat LabelPainter::render_box_overlay(int width, int height,
+                                         const vision::Box& box,
+                                         bool label_above) const {
+    if (width <= 0 || height <= 0)
+        throw std::runtime_error("Invalid box overlay dimensions");
+    constexpr int label_height = 32;
+    const int box_y = label_above ? label_height : 0;
+    const int overlay_height = label_above ? height + label_height
+                                           : std::max(height, label_height);
+    cv::Mat overlay(overlay_height, width, CV_8UC4,
+                    cv::Scalar(0, 0, 0, 0));
+    const int thickness = std::min(4, std::min(width, height));
+    const cv::Scalar green(0, 255, 0, 255);
+    cv::rectangle(overlay, cv::Rect(0, box_y, width, thickness), green,
+                  cv::FILLED);
+    cv::rectangle(overlay,
+                  cv::Rect(0, box_y + height - thickness, width, thickness),
+                  green, cv::FILLED);
+    cv::rectangle(overlay, cv::Rect(0, box_y, thickness, height), green,
+                  cv::FILLED);
+    cv::rectangle(overlay,
+                  cv::Rect(width - thickness, box_y, thickness, height), green,
+                  cv::FILLED);
+    render_top_strip(width, box, label_above)
+        .copyTo(overlay(cv::Rect(0, 0, width, label_height)));
+    return overlay;
+}
 void LabelPainter::draw(cv::Mat& bgr, const std::vector<vision::Box>& boxes) const {
     for (const auto& box : boxes) {
         if (box.class_id < 0 || box.class_id >= atlas_.rows / 32)

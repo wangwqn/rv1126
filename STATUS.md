@@ -1,6 +1,18 @@
-# 实测状态（2026-10-24）
+# 实测状态（2026-10-26）
 
-## 当前23类正式版本（1.8.7）
+## 当前23类正式版本（1.8.8）
+
+- 正式无参数启动已切换为 IMX415 2×2 binning 1080p@30；TNR 2to1、
+  NR、SHARP、AI、OSD和音频默认全部开启。
+- 真机 `health` 返回主/子流3秒各墑长约92帧、`ErrCnt=0`、
+  `AI=ON OSD=ON AUDIO=ON`；AI以3 FPS完成，音频约50包/秒且无丢包。
+- 经 `wang` 热点直连（无ADB转发）确认RTSP主流为H.264 30/1 FPS +
+  8 kHz单声道PCMA。
+- OSD现为每个目标使用1个局部ARGB位图区域，支持每帧最多8个中文
+  名称+置信度框。真机实时日志已达 `osd(boxes=6, truncated=0)`，Wi-Fi
+  RTSP抓帧已肉眼确认显示器、容器、鼠标和键盘等多框同时显示。
+
+### 1.8.7 历史性能基线
 
 - AI专用RGA2现在通过 `RK_MPI_SYS_SetFrameRate` 在转换前由视频帧率降到3 FPS；
   4K全视场完整功能实测10秒应用CPU占四核总容量19.65%，原基线为26.30%。
@@ -27,8 +39,8 @@
 - 10秒采样中应用占四核总容量13.63%、整机busy 19.17%、RSS约117 MB；完整数据见
   `artifacts/board-validation-objects23-20261024.md`，现场抓帧见
   `artifacts/device-objects23-live.jpg`。
-- 候选仍位于 `release/rv1126/candidates/objects23/`，没有覆盖11类稳定发布；
-  逐类实物精度、Wi-Fi、30分钟和24小时回归仍待完成。
+- 23类模型已提升为 `release/rv1126/objects/` 正式发布；候选目录仅作
+  历史审计。逐类实物精度、Wi-Fi 30分钟和24小时回归仍待完成。
 - 用户选择的全视场配置已真机运行：IMX415 3864×2192 RAW10，有效裁剪
   3840×2160，再缩放到1920×1080/640×360。30秒并发解码为29.83/29.80 FPS，
   应用占四核总容量26.30%，两路1793帧时各有6个PTS缺口。该取舍由候选专用
@@ -46,15 +58,16 @@
 ## 当前开发板正在运行的版本
 
 - 目录：`/root/rv1126_objects`，未覆盖原人脸程序或系统运行库。
-- 权重来源：`runs/objects11_relu2/weights/best.pt`，12 epoch 的训练基线。
-- 模型：`artifacts/objects-rv1126.rknn`，1,899,778 字节。
+- 权重来源：`runs/objects23_finetune/weights/best.pt`，23类迁移训练+微调结果。
+- 模型：`release/rv1126/objects/objects.rknn`，1,916,328 字节。
 - 当前真机候选程序 SHA256：见 `release/rv1126/SHA256SUMS`；1.4.0 增加了可选的
   分段时延统计，1.5.0 增加逐样本异步 CSV 和 SVG 绘图，1.5.1 将 OSD 改为
   检测结果事件驱动，1.5.2 复用 AI 预处理与候选框工作区，1.6.0 增加
   原子部署和板端服务管理，1.7.0 增加健康检查和已验证一键回滚，1.8.0 增加
-  ALSA/G.711A RTSP 音频和音视频同步；
+  ALSA/G.711A RTSP 音频和音视频同步，1.8.8增加每帧最多8个RGA多目标框并
+  将正式默认切换到binning 1080p@30；
   模型文件未变化。
-- 模型 SHA256：`661285a3c12e43fd58c2e2018adb1d8da5766bbf43601992b3468854b78402b8`。
+- 模型 SHA256：`6c63cb88dfc0ac28419d963d5270b38cfc54add317e8bcb2a3abfafdf263b824`。
 - 转换工具：RKNN Toolkit 1.7.5；板端原 runtime 1.7.0 / driver 6.4.6.5.351518 实测可加载。
 - ONNX 检查和 PyTorch/ONNX Runtime 数值对比通过。
 - C++ NCHW/NHWC 解码、letterbox 还原、按类别 NMS、类别编号缩放、NaN 测试通过。

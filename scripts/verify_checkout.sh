@@ -43,6 +43,8 @@ required=(
   "artifacts/native-4k-output-validation-20261024.md"
   "artifacts/full-fov-29fps-validation-20261024.md"
   "artifacts/ai-rga-rate-limit-validation-20261025.md"
+  "artifacts/imx415-binning-1080-validation-20261026.md"
+  "artifacts/device-v188-multibox-live.png"
   "artifacts/device-objects23-full-fov-4k-to-1080.jpg"
   "artifacts/device-objects23-full-fov-live-20261024.jpg"
   "scripts/push_objects23_candidate.sh"

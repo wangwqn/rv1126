@@ -118,13 +118,15 @@ public:
     ~HardwareCompositor();
     std::size_t update(const std::vector<Box>& boxes);
 private:
+    static constexpr std::size_t region_count_ = 8;
     void disable_slot(int slot) noexcept;
     void disable_all() noexcept;
-    int channel_, height_;
+    int channel_, height_, max_boxes_;
     bool enabled_;
     std::unique_ptr<object_detection::LabelPainter> painter_;
-    std::array<std::shared_ptr<cv::Mat>, 2> current_labels_;
-    std::array<std::shared_ptr<cv::Mat>, 8> retired_labels_;
+    std::array<std::shared_ptr<cv::Mat>, region_count_> current_overlays_;
+    // Keep four complete generations alive while queued RGA frames drain.
+    std::array<std::shared_ptr<cv::Mat>, region_count_ * 4> retired_overlays_;
     std::size_t retired_index_ = 0;
 };
 
