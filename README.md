@@ -219,11 +219,24 @@ adb pull /root/rv1126_objects/result.jpg ./artifacts/device-result.jpg
 adb shell '/root/rv1126_objects/rv1126-object start'
 adb shell '/root/rv1126_objects/rv1126-object status'
 adb shell '/root/rv1126_objects/rv1126-object health'
+adb shell '/root/rv1126_objects/rv1126-object watchdog-status'
+adb shell '/root/rv1126_objects/rv1126-object watchdog-log'
 adb shell '/root/rv1126_objects/rv1126-object stop'
 ```
 
 `health` 在默认 3 秒窗口内确认主/子 ISPP 帧计数继续增长，同时检查
-音频采集计数、进程、RTSP 8554 监听、`ErrCnt=0` 和 TNR ON。需要恢复到上一次已验证部署时：
+音频采集计数、进程、看门狗、RTSP 8554 监听、`ErrCnt=0` 和 TNR ON。
+看门狗默认每5秒采样，连续2次发现进程退出、RTSP未监听、ISPP断流、
+VENC停滞或 `ErrCnt` 非零时自动重启管线。可通过环境变量调整：
+
+```text
+RV1126_WATCHDOG_INTERVAL=5
+RV1126_WATCHDOG_FAILURE_LIMIT=2
+RV1126_WATCHDOG_GRACE=15
+RV1126_WATCHDOG_BACKOFF_MAX=60
+```
+
+`foreground` 用于调试，不启动外部看门狗。需要恢复到上一次已验证部署时：
 
 ```bash
 bash scripts/rollback_device.sh

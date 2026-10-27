@@ -5,6 +5,18 @@ APP_DIR=${RV1126_APP_DIR:-/root/rv1126_objects}
 APP="$APP_DIR/rkmedia_object_detection_rtsp"
 PID_FILE=${RV1126_PID_FILE:-/var/run/rv1126-object.pid}
 LOG_FILE=${RV1126_LOG_FILE:-/tmp/rv1126-object.log}
+CONTROLLER=$(readlink -f "$0")
+
+WATCHDOG_PID_FILE=${RV1126_WATCHDOG_PID_FILE:-${PID_FILE%.pid}-watchdog.pid}
+WATCHDOG_ARGS_FILE=${RV1126_WATCHDOG_ARGS_FILE:-${PID_FILE%.pid}-args}
+WATCHDOG_STOP_FILE=${RV1126_WATCHDOG_STOP_FILE:-${PID_FILE%.pid}-watchdog.stop}
+WATCHDOG_STATE_FILE=${RV1126_WATCHDOG_STATE_FILE:-${PID_FILE%.pid}-watchdog.state}
+WATCHDOG_LAST_FILE=${RV1126_WATCHDOG_LAST_FILE:-${PID_FILE%.pid}-watchdog.last}
+WATCHDOG_LOG=${RV1126_WATCHDOG_LOG:-${LOG_FILE%.log}-watchdog.log}
+WATCHDOG_INTERVAL=${RV1126_WATCHDOG_INTERVAL:-5}
+WATCHDOG_FAILURE_LIMIT=${RV1126_WATCHDOG_FAILURE_LIMIT:-2}
+WATCHDOG_GRACE=${RV1126_WATCHDOG_GRACE:-15}
+WATCHDOG_BACKOFF_MAX=${RV1126_WATCHDOG_BACKOFF_MAX:-60}
 
 running_pid() {
     [ -s "$PID_FILE" ] || return 1
@@ -15,82 +27,347 @@ running_pid() {
     case "$command_line" in *"$APP"*) printf '%s\n' "$pid" ;; *) return 1 ;; esac
 }
 
-start_service() {
-    if pid=$(running_pid); then
-        echo "Already running: pid=$pid"
-        return 0
-    fi
+watchdog_pid() {
+    [ -s "$WATCHDOG_PID_FILE" ] || return 1
+    pid=$(cat "$WATCHDOG_PID_FILE" 2>/dev/null || true)
+    case "$pid" in *[!0-9]*|'') return 1 ;; esac
+    [ -d "/proc/$pid" ] || return 1
+    command_line=$(tr '\000' ' ' <"/proc/$pid/cmdline" 2>/dev/null || true)
+    case "$command_line" in
+        *"$CONTROLLER"*" watchdog"*) printf '%s\n' "$pid" ;;
+        *) return 1 ;;
+    esac
+}
+
+validate_watchdog_settings() {
+    for value in "$WATCHDOG_INTERVAL" "$WATCHDOG_FAILURE_LIMIT" \
+                 "$WATCHDOG_GRACE" "$WATCHDOG_BACKOFF_MAX"; do
+        case "$value" in *[!0-9]*|'')
+            echo "Invalid watchdog setting: $value" >&2
+            return 2
+            ;;
+        esac
+    done
+    [ "$WATCHDOG_INTERVAL" -ge 2 ] && [ "$WATCHDOG_INTERVAL" -le 60 ] || {
+        echo "RV1126_WATCHDOG_INTERVAL must be between 2 and 60 seconds" >&2
+        return 2
+    }
+    [ "$WATCHDOG_FAILURE_LIMIT" -ge 1 ] && [ "$WATCHDOG_FAILURE_LIMIT" -le 10 ] || {
+        echo "RV1126_WATCHDOG_FAILURE_LIMIT must be between 1 and 10" >&2
+        return 2
+    }
+    [ "$WATCHDOG_GRACE" -ge 5 ] && [ "$WATCHDOG_GRACE" -le 120 ] || {
+        echo "RV1126_WATCHDOG_GRACE must be between 5 and 120 seconds" >&2
+        return 2
+    }
+    [ "$WATCHDOG_BACKOFF_MAX" -ge 2 ] && [ "$WATCHDOG_BACKOFF_MAX" -le 300 ] || {
+        echo "RV1126_WATCHDOG_BACKOFF_MAX must be between 2 and 300 seconds" >&2
+        return 2
+    }
+}
+
+set_default_args() {
+    set -- \
+        --sensor-mode 1080p \
+        --width 1920 --height 1080 \
+        --sub-width 640 --sub-height 360 \
+        --fps 30 --ai-fps 3 --max-osd-boxes 8 \
+        --bitrate 4000000 --sub-bitrate 600000 \
+        --pool-buffers 8 --packet-queue 8 \
+        --rotation 270 --threshold 0.25 \
+        --audio-device plughw:0,0 --audio-source main --audio-period-ms 20
+    printf '%s\n' "$@"
+}
+
+save_args() {
+    : >"$WATCHDOG_ARGS_FILE"
+    for arg in "$@"; do
+        printf '%s\n' "$arg" >>"$WATCHDOG_ARGS_FILE"
+    done
+}
+
+launch_pipeline() {
     rm -f "$PID_FILE"
-    [ -x "$APP" ] || { echo "Missing executable: $APP" >&2; return 1; }
-    [ -s "$APP_DIR/objects.rknn" ] || { echo "Missing model: $APP_DIR/objects.rknn" >&2; return 1; }
-    if [ "$#" -eq 0 ]; then
-        set -- \
-            --sensor-mode 1080p \
-            --width 1920 --height 1080 \
-            --sub-width 640 --sub-height 360 \
-            --fps 30 --ai-fps 3 --max-osd-boxes 8 \
-            --bitrate 4000000 --sub-bitrate 600000 \
-            --pool-buffers 8 --packet-queue 8 \
-            --rotation 270 --threshold 0.25 \
-            --audio-device plughw:0,0 --audio-source main --audio-period-ms 20
-    fi
     cd "$APP_DIR"
     : >"$LOG_FILE"
     nohup start-stop-daemon -S -m -p "$PID_FILE" -x "$APP" -- "$@" \
         >"$LOG_FILE" 2>&1 </dev/null &
     sleep 2
-    if pid=$(running_pid); then
-        echo "Started: pid=$pid log=$LOG_FILE"
-        return 0
-    fi
-    echo "Start failed; log follows:" >&2
-    tail -80 "$LOG_FILE" >&2 || true
-    return 1
+    running_pid >/dev/null
 }
 
-stop_service() {
-    if ! pid=$(running_pid); then
-        rm -f "$PID_FILE"
-        echo "Not running"
-        return 0
-    fi
-    kill -TERM "$pid"
-    count=0
-    while [ -d "/proc/$pid" ] && [ "$count" -lt 20 ]; do
-        sleep 1
-        count=$((count + 1))
-    done
-    if [ -d "/proc/$pid" ]; then
-        echo "Graceful stop timed out; sending KILL" >&2
-        kill -KILL "$pid" 2>/dev/null || true
-        # The bundled RTSP library does not enable SO_REUSEADDR. Give the
-        # killed process and TCP stack a bounded interval to release 8554,
-        # otherwise an immediate restart can fail with EADDRINUSE.
+pipeline_frame() {
+    channel=$1
+    sed -n "/^Output .*${channel}/s/.*(frame:\([0-9][0-9]*\).*/\1/p" \
+        /proc/rkispp0 2>/dev/null | head -1
+}
+
+venc_frame() {
+    stream=$1
+    case "$stream" in
+        main)
+            sed -n 's/^video main(venc=\([0-9][0-9]*\).*/\1/p' \
+                "$LOG_FILE" 2>/dev/null | tail -1
+            ;;
+        sub)
+            sed -n 's/^video .* sub(venc=\([0-9][0-9]*\).*/\1/p' \
+                "$LOG_FILE" 2>/dev/null | tail -1
+            ;;
+        *) return 2 ;;
+    esac
+}
+
+watchdog_log() {
+    printf '%s %s\n' "$(date '+%Y-%m-%dT%H:%M:%S%z')" "$*" >>"$WATCHDOG_LOG"
+}
+
+stop_pipeline_quiet() {
+    if pid=$(running_pid); then
+        kill -TERM "$pid" 2>/dev/null || true
         count=0
-        while netstat -ant 2>/dev/null | grep -q ':8554[[:space:]]' && \
-              [ "$count" -lt 10 ]; do
+        while [ -d "/proc/$pid" ] && [ "$count" -lt 8 ]; do
             sleep 1
             count=$((count + 1))
         done
+        if [ -d "/proc/$pid" ]; then
+            watchdog_log "pipeline pid=$pid did not stop after ${count}s; sending KILL"
+            kill -KILL "$pid" 2>/dev/null || true
+        fi
     fi
     rm -f "$PID_FILE"
+
+    count=0
+    while netstat -lnt 2>/dev/null | grep -q ':8554[[:space:]]' && \
+          [ "$count" -lt 10 ]; do
+        sleep 1
+        count=$((count + 1))
+    done
+}
+
+watchdog_sleep() {
+    seconds=$1
+    while [ "$seconds" -gt 0 ]; do
+        [ ! -e "$WATCHDOG_STOP_FILE" ] || return 1
+        sleep 1
+        seconds=$((seconds - 1))
+    done
+}
+
+watchdog_cleanup() {
+    recorded=$(cat "$WATCHDOG_PID_FILE" 2>/dev/null || true)
+    [ "$recorded" != "$$" ] || rm -f "$WATCHDOG_PID_FILE"
+}
+
+watchdog_loop() {
+    validate_watchdog_settings
+    trap 'exit 0' INT TERM
+    trap watchdog_cleanup EXIT
+
+    if [ "$#" -eq 0 ] && [ -s "$WATCHDOG_ARGS_FILE" ]; then
+        while IFS= read -r arg; do set -- "$@" "$arg"; done <"$WATCHDOG_ARGS_FILE"
+    fi
+    [ "$#" -gt 0 ] || {
+        echo "Watchdog has no saved pipeline arguments" >&2
+        return 2
+    }
+
+    watchdog_log "watchdog started pid=$$ interval=${WATCHDOG_INTERVAL}s failures=$WATCHDOG_FAILURE_LIMIT grace=${WATCHDOG_GRACE}s"
+    watchdog_sleep "$WATCHDOG_GRACE" || return 0
+
+    failures=0
+    backoff=2
+    healthy_cycles=0
+    previous_main_ispp=
+    previous_sub_ispp=
+    previous_main_venc=
+    previous_sub_venc=
+
+    while [ ! -e "$WATCHDOG_STOP_FILE" ]; do
+        reason=
+        current_pid=$(running_pid 2>/dev/null || true)
+        if [ -z "$current_pid" ]; then
+            reason="process exited"
+            last_error=$(grep -E 'pipeline failed:|startup failed:' "$LOG_FILE" 2>/dev/null | tail -1 || true)
+            [ -z "$last_error" ] || reason="$reason ($last_error)"
+        elif ! netstat -lnt 2>/dev/null | grep -q ':8554[[:space:]]'; then
+            reason="RTSP port 8554 is not listening"
+        else
+            main_ispp=$(pipeline_frame rkispp_scale0)
+            sub_ispp=$(pipeline_frame rkispp_scale1)
+            main_venc=$(venc_frame main)
+            sub_venc=$(venc_frame sub)
+            errors=$(sed -n 's/^Interrupt .*ErrCnt:\([0-9][0-9]*\).*/\1/p' \
+                /proc/rkispp0 2>/dev/null | head -1)
+
+            if [ -z "$main_ispp" ] || [ -z "$sub_ispp" ]; then
+                reason="RKISPP counters are unavailable"
+            elif [ -n "$previous_main_ispp" ] && \
+                 { [ "$main_ispp" -le "$previous_main_ispp" ] || \
+                   [ "$sub_ispp" -le "$previous_sub_ispp" ]; }; then
+                reason="RKISPP stream stalled main=$main_ispp sub=$sub_ispp"
+            elif [ -z "$main_venc" ] || [ -z "$sub_venc" ]; then
+                reason="VENC statistics are unavailable"
+            elif [ -n "$previous_main_venc" ] && \
+                 { [ "$main_venc" -le "$previous_main_venc" ] || \
+                   [ "$sub_venc" -le "$previous_sub_venc" ]; }; then
+                reason="VENC output stalled main=$main_venc sub=$sub_venc"
+            elif [ -z "$errors" ] || [ "$errors" -ne 0 ]; then
+                reason="RKISPP ErrCnt=${errors:-unknown}"
+            fi
+
+            previous_main_ispp=$main_ispp
+            previous_sub_ispp=$sub_ispp
+            previous_main_venc=$main_venc
+            previous_sub_venc=$sub_venc
+        fi
+
+        if [ -z "$reason" ]; then
+            failures=0
+            healthy_cycles=$((healthy_cycles + 1))
+            if [ "$healthy_cycles" -ge 12 ]; then backoff=2; fi
+        else
+            healthy_cycles=0
+            failures=$((failures + 1))
+            watchdog_log "probe failed $failures/$WATCHDOG_FAILURE_LIMIT: $reason"
+        fi
+
+        if [ "$failures" -ge "$WATCHDOG_FAILURE_LIMIT" ]; then
+            old_pid=${current_pid:-none}
+            count=$(cat "$WATCHDOG_STATE_FILE" 2>/dev/null || true)
+            case "$count" in *[!0-9]*|'') count=0 ;; esac
+            count=$((count + 1))
+            printf '%s\n' "$count" >"$WATCHDOG_STATE_FILE"
+            watchdog_log "restarting pipeline count=$count old_pid=$old_pid reason=$reason backoff=${backoff}s"
+            stop_pipeline_quiet
+            watchdog_sleep "$backoff" || return 0
+            if launch_pipeline "$@"; then
+                new_pid=$(running_pid)
+                printf '%s|%s|%s|%s\n' "$(date '+%Y-%m-%dT%H:%M:%S%z')" \
+                    "$reason" "$old_pid" "$new_pid" >"$WATCHDOG_LAST_FILE"
+                watchdog_log "pipeline restarted old_pid=$old_pid new_pid=$new_pid"
+            else
+                watchdog_log "pipeline restart failed; see $LOG_FILE"
+            fi
+            if [ "$backoff" -lt "$WATCHDOG_BACKOFF_MAX" ]; then
+                backoff=$((backoff * 2))
+                [ "$backoff" -le "$WATCHDOG_BACKOFF_MAX" ] || \
+                    backoff=$WATCHDOG_BACKOFF_MAX
+            fi
+            failures=0
+            previous_main_ispp=
+            previous_sub_ispp=
+            previous_main_venc=
+            previous_sub_venc=
+            watchdog_sleep "$WATCHDOG_GRACE" || return 0
+        else
+            watchdog_sleep "$WATCHDOG_INTERVAL" || return 0
+        fi
+    done
+}
+
+start_watchdog() {
+    if pid=$(watchdog_pid); then
+        echo "Watchdog already running: pid=$pid"
+        return 0
+    fi
+    rm -f "$WATCHDOG_PID_FILE" "$WATCHDOG_STOP_FILE"
+    nohup "$CONTROLLER" watchdog "$@" >>"$WATCHDOG_LOG" 2>&1 </dev/null &
+    pid=$!
+    printf '%s\n' "$pid" >"$WATCHDOG_PID_FILE"
+    sleep 1
+    watchdog_pid >/dev/null || {
+        echo "Watchdog failed to start; log follows:" >&2
+        tail -40 "$WATCHDOG_LOG" >&2 || true
+        return 1
+    }
+}
+
+stop_watchdog() {
+    : >"$WATCHDOG_STOP_FILE"
+    if pid=$(watchdog_pid); then
+        kill -TERM "$pid" 2>/dev/null || true
+        count=0
+        while [ -d "/proc/$pid" ] && [ "$count" -lt 5 ]; do
+            sleep 1
+            count=$((count + 1))
+        done
+        [ ! -d "/proc/$pid" ] || kill -KILL "$pid" 2>/dev/null || true
+    fi
+    rm -f "$WATCHDOG_PID_FILE"
+}
+
+start_service() {
+    validate_watchdog_settings
+    [ -x "$APP" ] || { echo "Missing executable: $APP" >&2; return 1; }
+    [ -s "$APP_DIR/objects.rknn" ] || { echo "Missing model: $APP_DIR/objects.rknn" >&2; return 1; }
+    if [ "$#" -eq 0 ]; then
+        set -- $(set_default_args)
+    fi
+
+    if pid=$(running_pid); then
+        if watchdog_pid >/dev/null; then
+            echo "Already running: pid=$pid watchdog=$(watchdog_pid)"
+            return 0
+        fi
+        save_args "$@"
+        : >"$WATCHDOG_LOG"
+        printf '0\n' >"$WATCHDOG_STATE_FILE"
+        start_watchdog "$@"
+        echo "Attached watchdog to running pipeline: pid=$pid watchdog=$(watchdog_pid)"
+        return 0
+    fi
+
+    save_args "$@"
+    : >"$WATCHDOG_LOG"
+    printf '0\n' >"$WATCHDOG_STATE_FILE"
+    rm -f "$WATCHDOG_LAST_FILE" "$WATCHDOG_STOP_FILE"
+    if ! launch_pipeline "$@"; then
+        echo "Start failed; log follows:" >&2
+        tail -80 "$LOG_FILE" >&2 || true
+        return 1
+    fi
+    start_watchdog "$@"
+    echo "Started: pid=$(running_pid) watchdog=$(watchdog_pid) log=$LOG_FILE watchdog_log=$WATCHDOG_LOG"
+}
+
+stop_service() {
+    stop_watchdog
+    if pid=$(running_pid); then
+        kill -TERM "$pid"
+        count=0
+        while [ -d "/proc/$pid" ] && [ "$count" -lt 20 ]; do
+            sleep 1
+            count=$((count + 1))
+        done
+        if [ -d "/proc/$pid" ]; then
+            echo "Graceful stop timed out; sending KILL" >&2
+            kill -KILL "$pid" 2>/dev/null || true
+            count=0
+            while netstat -ant 2>/dev/null | grep -q ':8554[[:space:]]' && \
+                  [ "$count" -lt 10 ]; do
+                sleep 1
+                count=$((count + 1))
+            done
+        fi
+    fi
+    rm -f "$PID_FILE" "$WATCHDOG_STOP_FILE"
     echo "Stopped"
 }
 
 status_service() {
     version=unknown
     [ ! -s "$APP_DIR/VERSION" ] || version=$(tr -d '[:space:]' <"$APP_DIR/VERSION")
+    restarts=$(cat "$WATCHDOG_STATE_FILE" 2>/dev/null || echo 0)
     if pid=$(running_pid); then
-        echo "Running: version=$version pid=$pid app=$APP log=$LOG_FILE"
-        return 0
+        if watchdog=$(watchdog_pid 2>/dev/null); then
+            echo "Running: version=$version pid=$pid watchdog=$watchdog restarts=$restarts app=$APP log=$LOG_FILE"
+            return 0
+        fi
+        echo "Degraded: version=$version pid=$pid watchdog=stopped restarts=$restarts"
+        return 1
     fi
-    echo "Stopped: version=$version"
+    echo "Stopped: version=$version watchdog_restarts=$restarts"
     return 3
-}
-
-pipeline_frame() {
-    channel=$1
-    sed -n "/^Output .*${channel}/s/.*(frame:\([0-9][0-9]*\).*/\1/p" /proc/rkispp0 2>/dev/null | head -1
 }
 
 health_service() {
@@ -101,6 +378,7 @@ health_service() {
         return 2
     }
     pid=$(running_pid) || { echo "Unhealthy: service is not running" >&2; return 1; }
+    watchdog=$(watchdog_pid) || { echo "Unhealthy: watchdog is not running" >&2; return 1; }
     runtime_args=$(tr '\000' ' ' <"/proc/$pid/cmdline" 2>/dev/null || true)
     case " $runtime_args " in
         *" --no-ai "*) echo "Unhealthy: AI is disabled" >&2; return 1 ;;
@@ -113,6 +391,8 @@ health_service() {
     }
     main_before=$(pipeline_frame rkispp_scale0)
     sub_before=$(pipeline_frame rkispp_scale1)
+    main_venc_before=$(venc_frame main)
+    sub_venc_before=$(venc_frame sub)
     [ -n "$main_before" ] && [ -n "$sub_before" ] || {
         echo "Unhealthy: cannot read ISPP output counters" >&2
         return 1
@@ -121,12 +401,21 @@ health_service() {
     running_pid >/dev/null || { echo "Unhealthy: service exited during sampling" >&2; return 1; }
     main_after=$(pipeline_frame rkispp_scale0)
     sub_after=$(pipeline_frame rkispp_scale1)
+    main_venc_after=$(venc_frame main)
+    sub_venc_after=$(venc_frame sub)
     [ -n "$main_after" ] && [ -n "$sub_after" ] || {
         echo "Unhealthy: ISPP counters disappeared" >&2
         return 1
     }
     [ "$main_after" -gt "$main_before" ] && [ "$sub_after" -gt "$sub_before" ] || {
         echo "Unhealthy: video counters did not advance" >&2
+        return 1
+    }
+    [ -n "$main_venc_before" ] && [ -n "$sub_venc_before" ] && \
+    [ -n "$main_venc_after" ] && [ -n "$sub_venc_after" ] && \
+    [ "$main_venc_after" -ge "$main_venc_before" ] && \
+    [ "$sub_venc_after" -ge "$sub_venc_before" ] || {
+        echo "Unhealthy: cannot verify VENC output counters" >&2
         return 1
     }
     errors=$(sed -n 's/^Interrupt .*ErrCnt:\([0-9][0-9]*\).*/\1/p' /proc/rkispp0 | head -1)
@@ -154,7 +443,19 @@ health_service() {
     }
     version=unknown
     [ ! -s "$APP_DIR/VERSION" ] || version=$(tr -d '[:space:]' <"$APP_DIR/VERSION")
-    echo "Healthy: version=$version pid=$pid interval=${interval}s main_delta=$((main_after-main_before)) sub_delta=$((sub_after-sub_before)) audio_packets=$audio_captured AI=ON OSD=ON AUDIO=ON ErrCnt=$errors TNR=ON RTSP=8554"
+    restarts=$(cat "$WATCHDOG_STATE_FILE" 2>/dev/null || echo 0)
+    echo "Healthy: version=$version pid=$pid watchdog=$watchdog restarts=$restarts interval=${interval}s main_delta=$((main_after-main_before)) sub_delta=$((sub_after-sub_before)) audio_packets=$audio_captured AI=ON OSD=ON AUDIO=ON ErrCnt=$errors TNR=ON RTSP=8554"
+}
+
+watchdog_status() {
+    restarts=$(cat "$WATCHDOG_STATE_FILE" 2>/dev/null || echo 0)
+    last=$(cat "$WATCHDOG_LAST_FILE" 2>/dev/null || echo none)
+    if pid=$(watchdog_pid); then
+        echo "Watchdog: running pid=$pid restarts=$restarts interval=${WATCHDOG_INTERVAL}s failure_limit=$WATCHDOG_FAILURE_LIMIT last=$last log=$WATCHDOG_LOG"
+        return 0
+    fi
+    echo "Watchdog: stopped restarts=$restarts last=$last log=$WATCHDOG_LOG"
+    return 3
 }
 
 command=${1:-}
@@ -165,18 +466,13 @@ case "$command" in
     restart) stop_service; start_service "$@" ;;
     status) status_service ;;
     health) health_service ;;
+    watchdog-status) watchdog_status ;;
+    watchdog-log) tail -100 "$WATCHDOG_LOG" 2>/dev/null || true ;;
+    watchdog) watchdog_loop "$@" ;;
     foreground)
         cd "$APP_DIR"
         if [ "$#" -eq 0 ]; then
-            set -- \
-                --sensor-mode 1080p \
-                --width 1920 --height 1080 \
-                --sub-width 640 --sub-height 360 \
-                --fps 30 --ai-fps 3 --max-osd-boxes 8 \
-                --bitrate 4000000 --sub-bitrate 600000 \
-                --pool-buffers 8 --packet-queue 8 \
-                --rotation 270 --threshold 0.25 \
-                --audio-device plughw:0,0 --audio-source main --audio-period-ms 20
+            set -- $(set_default_args)
         fi
         exec "$APP" "$@"
         ;;
@@ -192,7 +488,7 @@ case "$command" in
         echo "Removed boot service"
         ;;
     *)
-        echo "Usage: $0 {start|stop|restart|status|health|foreground|install-autostart|remove-autostart} [program options...]" >&2
+        echo "Usage: $0 {start|stop|restart|status|health|watchdog-status|watchdog-log|foreground|install-autostart|remove-autostart} [program options...]" >&2
         exit 2
         ;;
 esac

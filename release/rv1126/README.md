@@ -51,14 +51,18 @@ adb shell '/root/rv1126_objects/rv1126-object health'
 adb shell '/root/rv1126_objects/rv1126-object stop'
 adb shell '/root/rv1126_objects/rv1126-object restart'
 adb shell '/root/rv1126_objects/rv1126-object health'
+adb shell '/root/rv1126_objects/rv1126-object watchdog-status'
+adb shell '/root/rv1126_objects/rv1126-object watchdog-log'
 adb shell 'tail -100 /tmp/rv1126-object.log'
 # 可选：安装 Buildroot 开机服务
 adb shell '/root/rv1126_objects/rv1126-object install-autostart'
 ```
 
 `health` 会在采样窗口内确认主/子视频帧和音频包计数增长，并检查 RTSP 监听、
-ISPP `ErrCnt`、TNR，同时拒绝以 `--no-ai`、`--no-osd` 或 `--no-audio` 启动
-的进程。宿主机可执行 `bash scripts/rollback_device.sh` 恢复上一次
+ISPP `ErrCnt`、TNR和外部看门狗，同时拒绝以 `--no-ai`、`--no-osd` 或
+`--no-audio` 启动的进程。看门狗默认每5秒检查进程、8554、RKISPP和
+VENC计数，连续2次异常后自动重启；日志保存在
+`/tmp/rv1126-object-watchdog.log`。宿主机可执行 `bash scripts/rollback_device.sh` 恢复上一次
 已验证部署；回滚前会先校验全部 `.previous` 文件，失败时不停止当前服务，
 交换后会等待板端健康检查通过。
 
