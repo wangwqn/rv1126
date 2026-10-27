@@ -240,3 +240,18 @@ bash scripts/capture_runtime_latency.sh 60
 各指标的准确起止边界和当前真机基线见
 `deploy/pipeline/docs/runtime-latency.md`；其中 `server_total` 只到板端 RTSP 发送
 API 返回，不是 VLC 显示端到端时延。
+
+## 11. 8小时完整功能验收
+
+确认开发板已连接宿主机热点，使用当次 DHCP 地址执行：
+
+```bash
+bash scripts/test_8h_acceptance.sh 192.168.137.109
+```
+
+脚本默认运行28800秒，每600秒重建一次 TCP 主/子流并严格
+统计30 FPS帧数；每小时解码30秒 H.264 + PCMA；每分钟采集应用
+CPU、RSS/HWM、线程、FD、CPU/NPU温度、看门狗恢复、RKISPP错误、
+VENC/AI/OSD/音频计数。默认证据目录为
+`/tmp/rv1126-acceptance-8h-<timestamp>`，结束后查看 `report.md`。
+媒体路径使用 Wi-Fi RTSP，ADB 只读取板端硬件遥测。

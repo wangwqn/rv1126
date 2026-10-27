@@ -11,6 +11,7 @@ required=(
   "handoff/VERSION_CONTROL.md"
   "scripts/test_rtsp_udp.sh"
   "scripts/test_rtsp_av.sh"
+  "scripts/test_8h_acceptance.sh"
   "scripts/lib/atomic_adb_deploy.sh"
   "scripts/deploy_release.sh"
   "scripts/rollback_device.sh"
