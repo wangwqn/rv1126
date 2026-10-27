@@ -65,6 +65,8 @@ VENC计数，连续2次异常后自动重启；日志保存在
 `/tmp/rv1126-object-watchdog.log`。宿主机可执行 `bash scripts/rollback_device.sh` 恢复上一次
 已验证部署；回滚前会先校验全部 `.previous` 文件，失败时不停止当前服务，
 交换后会等待板端健康检查通过。
+默认 OSD 结果 TTL 为500 ms，为3 FPS AI更新留出调度余量；
+空检测结果仍立即清框。
 
 主流地址为 `rtsp://开发板IP:8554/live/main_stream`，子流地址为
 `rtsp://开发板IP:8554/live/sub_stream`。

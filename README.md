@@ -242,6 +242,10 @@ RV1126_WATCHDOG_BACKOFF_MAX=60
 bash scripts/rollback_device.sh
 ```
 
+OSD 检测结果默认保留500 ms，大于3 FPS AI的约333 ms采样周期，
+用于吸收推理和线程调度抖动。AI发布空检测结果时仍会立即清框；
+可用 `--result-ttl-ms` 显式调整。
+
 回滚脚本会先校验所有 `.previous` 文件，再停止服务、交换当前/上一版文件、
 重新校验、启动并等待健康检查通过。连续执行两次可切回刚才的版本。
 

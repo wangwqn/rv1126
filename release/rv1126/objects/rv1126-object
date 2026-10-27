@@ -74,7 +74,7 @@ set_default_args() {
         --fps 30 --ai-fps 3 --max-osd-boxes 8 \
         --bitrate 4000000 --sub-bitrate 600000 \
         --pool-buffers 8 --packet-queue 8 \
-        --rotation 270 --threshold 0.25 \
+        --rotation 270 --threshold 0.25 --result-ttl-ms 500 \
         --audio-device plughw:0,0 --audio-source main --audio-period-ms 20
     printf '%s\n' "$@"
 }

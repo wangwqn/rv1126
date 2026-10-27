@@ -35,7 +35,10 @@ struct Config {
     int audio_input_channels = 2;
     int audio_period_ms = 20;
     int rtsp_port = 8554;
-    int result_ttl_ms = 300;
+    // AI runs at 3 FPS by default (about 333 ms between results). Keep the
+    // latest result through normal inference/scheduling jitter; an explicit
+    // empty AI result still clears the overlay immediately.
+    int result_ttl_ms = 500;
     int stall_timeout_ms = 5000;
     int ai_delay_ms = 0;
     // RKMedia exposes eight RGA OSD regions. Each detection uses one
@@ -174,7 +177,7 @@ inline void print_usage(std::ostream& out) {
            "  --audio-device plughw:0,0 --audio-mixer hw:0\n"
            "  --audio-source main|hands-free|current --audio-input-channels 2\n"
            "  --audio-period-ms 20 (8 kHz mono G.711A/PCMA output)\n"
-           "  --rtsp-port 8554 --result-ttl-ms 300 --stall-timeout-ms 5000\n"
+           "  --rtsp-port 8554 --result-ttl-ms 500 --stall-timeout-ms 5000\n"
            "  --iq-dir /etc/iqfiles\n"
            "  --latency-stats (rolling P50/P95/P99/max stage latency)\n"
            "  --latency-csv /tmp/latency.csv (asynchronous per-sample trace)\n"

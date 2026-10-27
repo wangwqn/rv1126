@@ -63,7 +63,7 @@ void test_config_parsing_and_validation() {
     const auto defaults = parse({});
     check(defaults.fps == 30 && defaults.ai_fps == 3 &&
               defaults.bitrate == 4000000 && defaults.sub_bitrate == 600000 &&
-              defaults.max_osd_boxes == 8 &&
+              defaults.max_osd_boxes == 8 && defaults.result_ttl_ms == 500 &&
               defaults.sensor_mode == "1080p" && defaults.audio &&
               defaults.audio_device == "plughw:0,0" && defaults.audio_period_ms == 20,
           "board-validated low-latency defaults are preserved");
@@ -396,6 +396,30 @@ void test_detection_history_and_time_limits() {
     check(rejected, "zero history capacity rejected");
 }
 
+void test_detection_ttl_covers_three_fps_jitter() {
+    const auto ttl = milliseconds(500);
+
+    vision::DetectionCache fresh;
+    auto delayed_result = detection(100);
+    delayed_result.completed_at = steady_clock::now() - milliseconds(400);
+    check(fresh.publish(std::move(delayed_result)), "publish delayed 3 FPS result");
+    check(static_cast<bool>(fresh.latest(ttl)),
+          "overlay survives one 3 FPS interval plus scheduling jitter");
+
+    vision::DetectionCache stale;
+    auto expired_result = detection(100);
+    expired_result.completed_at = steady_clock::now() - milliseconds(600);
+    check(stale.publish(std::move(expired_result)), "publish stale result");
+    check(!stale.latest(ttl), "overlay clears when AI really stops updating");
+
+    vision::DetectionCache explicit_clear;
+    check(explicit_clear.publish(detection(100)), "publish visible overlay");
+    check(explicit_clear.publish(detection(200, true)), "publish empty detection");
+    const auto cleared = explicit_clear.latest(ttl);
+    check(cleared && cleared->boxes.empty(),
+          "empty AI result clears immediately without waiting for TTL");
+}
+
 void test_detection_change_notification() {
     vision::DetectionCache cache;
     std::uint64_t generation = 0;
@@ -495,6 +519,7 @@ int main() {
         test_shared_leases_and_reentrant_deleters();
         test_slow_ai_does_not_block_main_stream();
         test_detection_history_and_time_limits();
+        test_detection_ttl_covers_three_fps_jitter();
         test_detection_change_notification();
         test_box_scaling_and_bounds();
         std::cout << "All core tests passed\n";
