@@ -7,6 +7,13 @@ PID_FILE=${RV1126_PID_FILE:-/var/run/rv1126-object.pid}
 LOG_FILE=${RV1126_LOG_FILE:-/tmp/rv1126-object.log}
 CONTROLLER=$(readlink -f "$0")
 
+# Buildroot init does not source /etc/profile.d/RkEnv.sh. Keep service startup
+# independent of an interactive login so RKMedia/RGA/RKNN libraries resolve
+# during boot as well as from adb/SSH shells.
+PATH=/bin:/sbin:/usr/bin:/usr/sbin:/oem:/oem/bin:/oem/usr/bin:/oem/sbin:/oem/usr/sbin
+LD_LIBRARY_PATH="/oem/usrlibs:/oem/usr/lib:/oem/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+export PATH LD_LIBRARY_PATH
+
 WATCHDOG_PID_FILE=${RV1126_WATCHDOG_PID_FILE:-${PID_FILE%.pid}-watchdog.pid}
 WATCHDOG_ARGS_FILE=${RV1126_WATCHDOG_ARGS_FILE:-${PID_FILE%.pid}-args}
 WATCHDOG_STOP_FILE=${RV1126_WATCHDOG_STOP_FILE:-${PID_FILE%.pid}-watchdog.stop}
