@@ -15,7 +15,7 @@ WATCHDOG_LAST_FILE=${RV1126_WATCHDOG_LAST_FILE:-${PID_FILE%.pid}-watchdog.last}
 WATCHDOG_LOG=${RV1126_WATCHDOG_LOG:-${LOG_FILE%.log}-watchdog.log}
 WATCHDOG_INTERVAL=${RV1126_WATCHDOG_INTERVAL:-5}
 WATCHDOG_FAILURE_LIMIT=${RV1126_WATCHDOG_FAILURE_LIMIT:-2}
-WATCHDOG_GRACE=${RV1126_WATCHDOG_GRACE:-15}
+WATCHDOG_GRACE=${RV1126_WATCHDOG_GRACE:-30}
 WATCHDOG_BACKOFF_MAX=${RV1126_WATCHDOG_BACKOFF_MAX:-60}
 
 running_pid() {
@@ -271,9 +271,9 @@ start_watchdog() {
         return 0
     fi
     rm -f "$WATCHDOG_PID_FILE" "$WATCHDOG_STOP_FILE"
-    nohup "$CONTROLLER" watchdog "$@" >>"$WATCHDOG_LOG" 2>&1 </dev/null &
-    pid=$!
-    printf '%s\n' "$pid" >"$WATCHDOG_PID_FILE"
+    start-stop-daemon -S -b -m -p "$WATCHDOG_PID_FILE" \
+        -x "$CONTROLLER" -- watchdog "$@" \
+        >>"$WATCHDOG_LOG" 2>&1 </dev/null
     sleep 1
     watchdog_pid >/dev/null || {
         echo "Watchdog failed to start; log follows:" >&2
@@ -324,7 +324,9 @@ start_service() {
     if ! launch_pipeline "$@"; then
         echo "Start failed; log follows:" >&2
         tail -80 "$LOG_FILE" >&2 || true
-        return 1
+        start_watchdog "$@"
+        echo "Initial pipeline start failed; watchdog=$(watchdog_pid) will retry after ${WATCHDOG_GRACE}s" >&2
+        return 0
     fi
     start_watchdog "$@"
     echo "Started: pid=$(running_pid) watchdog=$(watchdog_pid) log=$LOG_FILE watchdog_log=$WATCHDOG_LOG"
