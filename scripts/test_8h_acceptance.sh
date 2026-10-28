@@ -239,7 +239,7 @@ with open(destination, "w", encoding="utf-8") as output:
 PY
 
 {
-  echo "# RV1126 8-hour acceptance report"
+  echo "# RV1126 long-duration acceptance report"
   echo
   echo "- Start: $start_iso"
   echo "- End: $end_iso"
