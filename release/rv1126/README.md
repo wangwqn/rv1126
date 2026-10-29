@@ -83,8 +83,10 @@ IMX415 1944×1097 RAW12 2×2 binning，对齐1920×1080有效区域，输出
 板载 IQ 缺少 1080p ALSC 标定，因此该模式明确旁路 ALSC；正式产品应补做镜头标定。
 当前发布程序没有 `--disable-tnr` 参数。OSD默认按置信度显示最多8个
 中文名称+置信度检测框，可用 `--max-osd-boxes 1..8` 调整。
-v1.9.4 使用项目自有的异步 RTP-over-TCP 服务端替换旧 `librtsp`；当前发布仍以
-4 Mbps 作为真机验证基线。RTSP URL 不变，客户端需使用 TCP transport。
+v1.9.4 起使用项目自有的异步 RTP-over-TCP 服务端替换旧 `librtsp`；当前发布仍以
+4 Mbps 作为默认值。RTSP URL 不变，客户端需使用 TCP transport。v1.9.6 增加
+`--rtsp-client-buffer-kb 128..4096`，默认512 KiB；扩大缓冲能吸收短时拥塞，
+但会提高拥塞期间的瞬时延迟。
 
 AI专用RGA通道在输入端使用RKMedia帧率控制，只将默认3 FPS送入NV12→BGR转换，
 不再以视频帧率转换后由应用丢弃。全视场完整功能真机短测中，应用CPU占四核总容量
@@ -107,16 +109,13 @@ AI专用RGA通道在输入端使用RKMedia帧率控制，只将默认3 FPS送入
 申请输入图内存。真机同时段 A/B 中 `ai.infer` P99 从 17.827 ms 降至
 17.567 ms；这是软件预/后处理小幅优化，不代表 RKNN/NPU 单独耗时降低。
 
-局域网播放默认选择 RTP/UDP，RTSP 控制连接仍使用 TCP 8554。FFplay 示例：
+当前自建服务端只支持RTP-over-TCP interleaved。FFplay示例：
 
 ```bash
-ffplay -rtsp_transport udp -buffer_size 2097152 \
-  -reorder_queue_size 512 -max_delay 200000 \
+ffplay -rtsp_transport tcp -fflags nobuffer -flags low_delay \
+  -analyzeduration 100000 -probesize 32768 \
   rtsp://开发板IP:8554/live/main_stream
 ```
-
-ADB forward 不支持 UDP 媒体端口。UDP 被防火墙或网络策略阻断时，再回退到
-`-rtsp_transport tcp`。
 
 如二进制提示缺少共享库、非法指令或摄像头节点不存在，请不要替换板载系统库，应使用
 `deploy/pipeline/cmake/toolchains/rv1126.cmake` 和目标板对应 SDK 重新交叉编译。

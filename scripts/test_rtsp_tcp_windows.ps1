@@ -50,6 +50,7 @@ function Start-RtspStream([string]$Name) {
         '-rtsp_transport', 'tcp',
         '-i', (Quote-Argument $url),
         '-map', '0:v:0', '-an',
+        '-fps_mode', 'passthrough',
         '-t', $DurationSeconds,
         '-f', 'null', 'NUL'
     ) -join ' '
@@ -157,16 +158,21 @@ finally {
 
 $expectedFrames = $DurationSeconds * $ExpectedFps
 $minimumFrames = $expectedFrames - 2
-$failurePattern = 'corrupt|error while decoding|Invalid NAL|non-existing PPS|RTP: missed|max delay reached|Invalid data|timed out|Connection refused|CSeq .*expected|non.?monotonically increasing dts'
+$failurePattern = 'corrupt|error while decoding|Invalid NAL|non-existing PPS|RTP: missed|max delay reached|Invalid data|timed out|Connection refused|CSeq .*expected'
+$timestampPattern = 'non.?monotonically increasing dts'
 $failed = $timedOut
 $summary = @()
 
 foreach ($stream in $streams) {
     $stream.Process.Refresh()
+    if ($stream.Process.HasExited) {
+        $stream.Process.WaitForExit()
+    }
     $frames = Last-ProgressValue $stream.Progress 'frame'
     $fps = [math]::Round($frames / $DurationSeconds, 2)
     $exitCode = if ($stream.Process.HasExited) { $stream.Process.ExitCode } else { -1 }
     $errors = Select-String -Path $stream.Stderr -Pattern $failurePattern -ErrorAction SilentlyContinue
+    $timestampWarnings = Select-String -Path $stream.Stderr -Pattern $timestampPattern -ErrorAction SilentlyContinue
     if ($frames -lt $minimumFrames -or $exitCode -ne 0 -or $errors) {
         $failed = $true
     }
@@ -177,6 +183,7 @@ foreach ($stream in $streams) {
         expected_frames = $expectedFrames
         exit_code = $exitCode
         transport_errors = @($errors).Count
+        timestamp_warnings = @($timestampWarnings).Count
     }
 }
 

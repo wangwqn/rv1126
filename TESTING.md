@@ -78,7 +78,8 @@ Set-ExecutionPolicy -Scope Process Bypass
 
 脚本同时解码主、子流，按30分钟媒体帧数、FFmpeg退出码、传输/解码错误和
 每5秒Ping判定；结果保存在`%TEMP%\rv1126-tcp-日期时间\`。两路均不少于
-53998帧、无错误、无不可达采样才会输出`PASS`。
+53998帧、无错误、无不可达采样才会输出`PASS`。`timestamp_warnings`单独报告
+FFmpeg null muxer告警，不与H.264/RTP/CSeq传输错误混合。
 
 ```bash
 adb forward tcp:8554 tcp:8554

@@ -34,6 +34,9 @@ struct Config {
     int audio_input_channels = 2;
     int audio_period_ms = 20;
     int rtsp_port = 8554;
+    // Per-client user-space RTP-over-TCP backlog. This is configurable so a
+    // deployment can trade transient congestion tolerance against live delay.
+    int rtsp_client_buffer_kb = 512;
     // AI runs at 3 FPS by default (about 333 ms between results). Keep the
     // latest result through normal inference/scheduling jitter; an explicit
     // empty AI result still clears the overlay immediately.
@@ -80,6 +83,7 @@ struct Config {
                       audio_period_ms < 10 || audio_period_ms > 100))
             throw std::invalid_argument("invalid ALSA device, source, channels or packet duration");
         if (bitrate < 10000 || sub_bitrate < 10000 || rtsp_port < 1 || rtsp_port > 65535 ||
+            rtsp_client_buffer_kb < 128 || rtsp_client_buffer_kb > 4096 ||
             result_ttl_ms < 1 || result_ttl_ms > 10000 || stall_timeout_ms < 1000 ||
             stall_timeout_ms > 60000 || ai_delay_ms < 0 || ai_delay_ms > 5000 ||
             max_osd_boxes < 1 || max_osd_boxes > 8 ||
@@ -153,6 +157,7 @@ inline Config parse_config(int argc, char** argv) {
         else if (key == "--audio-input-channels") c.audio_input_channels = parse_integer(value);
         else if (key == "--audio-period-ms") c.audio_period_ms = parse_integer(value);
         else if (key == "--rtsp-port") c.rtsp_port = parse_integer(value);
+        else if (key == "--rtsp-client-buffer-kb") c.rtsp_client_buffer_kb = parse_integer(value);
         else if (key == "--result-ttl-ms") c.result_ttl_ms = parse_integer(value);
         else if (key == "--stall-timeout-ms") c.stall_timeout_ms = parse_integer(value);
         else if (key == "--ai-delay-ms") c.ai_delay_ms = parse_integer(value);
@@ -176,7 +181,8 @@ inline void print_usage(std::ostream& out) {
            "  --audio-device plughw:0,0 --audio-mixer hw:0\n"
            "  --audio-source main|hands-free|current --audio-input-channels 2\n"
            "  --audio-period-ms 20 (8 kHz mono G.711A/PCMA output)\n"
-           "  --rtsp-port 8554 --result-ttl-ms 500 --stall-timeout-ms 5000\n"
+           "  --rtsp-port 8554 --rtsp-client-buffer-kb 512\n"
+           "  --result-ttl-ms 500 --stall-timeout-ms 5000\n"
            "  --iq-dir /etc/iqfiles\n"
            "  --latency-stats (rolling P50/P95/P99/max stage latency)\n"
            "  --latency-csv /tmp/latency.csv (asynchronous per-sample trace)\n"

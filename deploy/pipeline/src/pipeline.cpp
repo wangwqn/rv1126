@@ -99,7 +99,9 @@ public:
         try {
             if (!config_.latency_csv.empty())
                 latency_csv_.reset(new AsyncLatencyCsv(config_.latency_csv));
-            rtsp_.reset(new RtspServer(config_.rtsp_port, config_.audio));
+            rtsp_.reset(new RtspServer(
+                config_.rtsp_port, config_.audio,
+                static_cast<std::size_t>(config_.rtsp_client_buffer_kb) * 1024));
             isp_.reset(new Isp(config_));
             media_.reset(new MediaSystem());
             const bool offline_ispp = config_.sensor_mode == "4k-ispp-1080";

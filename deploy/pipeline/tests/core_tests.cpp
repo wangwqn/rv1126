@@ -64,6 +64,7 @@ void test_config_parsing_and_validation() {
     check(defaults.fps == 30 && defaults.ai_fps == 3 &&
               defaults.bitrate == 4000000 && defaults.sub_bitrate == 600000 &&
               defaults.max_osd_boxes == 8 && defaults.result_ttl_ms == 500 &&
+              defaults.rtsp_client_buffer_kb == 512 &&
               defaults.sensor_mode == "1080p" && defaults.audio &&
               defaults.audio_device == "plughw:0,0" && defaults.audio_period_ms == 20,
           "board-validated low-latency defaults are preserved");
@@ -72,6 +73,7 @@ void test_config_parsing_and_validation() {
                                    "--sub-width", "640", "--sub-height", "360",
                                    "--rotation", "90", "--fps", "30",
                                    "--ai-fps", "6", "--rtsp-port", "9554",
+                                   "--rtsp-client-buffer-kb", "1024",
                                    "--sensor-mode", "current",
                                    "--audio-source", "hands-free",
                                    "--audio-period-ms", "40",
@@ -84,6 +86,7 @@ void test_config_parsing_and_validation() {
           "rotation swaps configured output dimensions");
     check(configured.fps == 30 && configured.ai_fps == 6 &&
               configured.rtsp_port == 9554 && configured.threshold == 0.75f &&
+              configured.rtsp_client_buffer_kb == 1024 &&
               configured.max_osd_boxes == 6 &&
               configured.sensor_mode == "current" &&
               configured.audio_source == "hands-free" && configured.audio_period_ms == 40,
@@ -122,6 +125,8 @@ void test_config_parsing_and_validation() {
                    "too-small PCMA packets are rejected");
     expect_invalid([] { parse({"--max-osd-boxes", "9"}); },
                    "RGA OSD region capacity is enforced");
+    expect_invalid([] { parse({"--rtsp-client-buffer-kb", "64"}); },
+                   "too-small RTSP client buffers are rejected");
     expect_invalid([] { parse({"--bitrate", "999999999999999999999"}); },
                    "integer overflow is rejected");
 }

@@ -32,7 +32,6 @@ namespace {
 // Absorb the board firmware's sub-second Wi-Fi power-state transition without
 // dropping a GOP. Longer congestion still enters the IDR resync path so live
 // latency cannot grow without bound.
-constexpr std::size_t kMaxClientOutput = 512 * 1024;
 constexpr std::size_t kMaxInputEvents = 512;
 constexpr std::size_t kRtpPayload = 1400;
 
@@ -176,7 +175,11 @@ struct RtspServer::Impl {
         bool failed = false;
     };
 
-    Impl(int port, bool audio) : port_(port), audio_(audio) {
+    Impl(int port, bool audio, std::size_t max_client_output)
+        : port_(port), audio_(audio), max_client_output_(max_client_output) {
+        if (max_client_output_ < 128 * 1024 ||
+            max_client_output_ > 4 * 1024 * 1024)
+            throw std::invalid_argument("invalid RTSP client output limit");
         try {
             listen_fd_ = ::socket(AF_INET, SOCK_STREAM, 0);
             if (listen_fd_ < 0) fail("RTSP socket");
@@ -204,8 +207,10 @@ struct RtspServer::Impl {
             throw;
         }
         std::fprintf(stderr,
-                     "rtsp: built-in async RTP/TCP server listening on port %d%s\n",
-                     port_, audio_ ? " with G.711A audio" : "");
+                     "rtsp: built-in async RTP/TCP server listening on port %d%s "
+                     "client_buffer=%zu bytes\n",
+                     port_, audio_ ? " with G.711A audio" : "",
+                     max_client_output_);
     }
 
     ~Impl() {
@@ -504,7 +509,7 @@ private:
     void enqueue(Client& client, std::vector<std::uint8_t> packet,
                  bool media = false) noexcept {
         if (client.failed) return;
-        if (client.output_bytes + packet.size() > kMaxClientOutput) {
+        if (client.output_bytes + packet.size() > max_client_output_) {
             if (!media) {
                 std::fprintf(stderr,
                              "rtsp: disconnecting unresponsive control client "
@@ -873,6 +878,7 @@ private:
 
     int port_ = 0;
     bool audio_ = false;
+    std::size_t max_client_output_ = 0;
     int listen_fd_ = -1;
     int wake_[2] = {-1, -1};
     std::atomic<bool> stopping_{false};
@@ -885,8 +891,8 @@ private:
     std::uint64_t input_drops_ = 0;
 };
 
-RtspServer::RtspServer(int port, bool audio)
-    : impl_(new Impl(port, audio)) {}
+RtspServer::RtspServer(int port, bool audio, std::size_t max_client_output)
+    : impl_(new Impl(port, audio, max_client_output)) {}
 RtspServer::~RtspServer() = default;
 void RtspServer::send(int stream, const Frame& packet) {
     impl_->push_video(stream, packet);

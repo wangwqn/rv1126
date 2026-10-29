@@ -158,7 +158,7 @@ private:
 // This object is serviced exclusively by one RTSP worker.
 class RtspServer : Noncopyable {
 public:
-    RtspServer(int port, bool audio);
+    RtspServer(int port, bool audio, std::size_t max_client_output);
     ~RtspServer();
     void send(int stream, const Frame& packet);
     void send_audio(const std::vector<std::uint8_t>& packet, std::uint64_t pts_us);
