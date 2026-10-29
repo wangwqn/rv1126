@@ -67,6 +67,19 @@ bash scripts/test_rtsp_tcp.sh <开发板当前IP> 60
 bash scripts/test_rtsp_tcp.sh <开发板当前IP> 60 30
 ```
 
+Windows热点场景应在宿主机直接验收，绕过VMware桥接。在安装FFmpeg并将
+`ffmpeg.exe`加入`PATH`后，用PowerShell执行：
+
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass
+.\scripts\test_rtsp_tcp_windows.ps1 `
+  -BoardIp 192.168.137.176 -DurationSeconds 1800 -ExpectedFps 30
+```
+
+脚本同时解码主、子流，按30分钟媒体帧数、FFmpeg退出码、传输/解码错误和
+每5秒Ping判定；结果保存在`%TEMP%\rv1126-tcp-日期时间\`。两路均不少于
+53998帧、无错误、无不可达采样才会输出`PASS`。
+
 ```bash
 adb forward tcp:8554 tcp:8554
 ffplay -rtsp_transport tcp rtsp://127.0.0.1:8554/live/main_stream

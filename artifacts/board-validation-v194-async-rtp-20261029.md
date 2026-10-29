@@ -115,6 +115,14 @@ Ubuntu 时的随机数秒级主流 TCP 停顿。继续扩大队列会与200 ms�
 3. 有线以太网；
 4. 若业务允许丢包换取无 TCP 队头阻塞，另行验证 RTP/UDP。
 
+Windows宿主机正式30分钟命令：
+
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass
+.\scripts\test_rtsp_tcp_windows.ps1 `
+  -BoardIp 192.168.137.176 -DurationSeconds 1800 -ExpectedFps 30
+```
+
 上述网络中30分钟通过后，再运行：
 
 ```bash
