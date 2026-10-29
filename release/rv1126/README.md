@@ -83,7 +83,8 @@ IMX415 1944×1097 RAW12 2×2 binning，对齐1920×1080有效区域，输出
 板载 IQ 缺少 1080p ALSC 标定，因此该模式明确旁路 ALSC；正式产品应补做镜头标定。
 当前发布程序没有 `--disable-tnr` 参数。OSD默认按置信度显示最多8个
 中文名称+置信度检测框，可用 `--max-osd-boxes 1..8` 调整。
-8 Mbps 在板载旧版 `librtsp` 上仍是已知不稳定配置。
+v1.9.4 使用项目自有的异步 RTP-over-TCP 服务端替换旧 `librtsp`；当前发布仍以
+4 Mbps 作为真机验证基线。RTSP URL 不变，客户端需使用 TCP transport。
 
 AI专用RGA通道在输入端使用RKMedia帧率控制，只将默认3 FPS送入NV12→BGR转换，
 不再以视频帧率转换后由应用丢弃。全视场完整功能真机短测中，应用CPU占四核总容量

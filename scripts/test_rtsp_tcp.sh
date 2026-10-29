@@ -81,8 +81,8 @@ echo "Starting main stream..."
 run_stream main &
 main_pid=$!
 
-# The old librtsp can stall when two SETUP handshakes arrive together. Start
-# the sub stream only after FFmpeg reports that main has received video frames.
+# Stagger both SETUP handshakes so the result measures steady-state dual-stream
+# delivery instead of a client-side connection burst.
 if ! wait_until_ready "$main_pid" "$log_dir/main.frames"; then
   echo "FAIL: main stream did not produce a frame within 10 seconds" >&2
   kill -TERM "$main_pid" 2>/dev/null || true
@@ -110,9 +110,9 @@ if ! wait_until_ready "$sub_pid" "$log_dir/sub.frames"; then
   exit 1
 fi
 
-# Do not use ffmpeg -t here: it follows media PTS, and this old librtsp can
-# jump PTS during SETUP. ffprobe emits one line per decoded frame; count line
-# differences over an explicit wall-clock interval after both streams are ready.
+# Do not use ffmpeg -t here because it follows media PTS rather than elapsed
+# time. ffprobe emits one line per decoded frame; count line differences over
+# an explicit wall-clock interval after both streams are ready.
 main_start=$(read_frames "$log_dir/main.frames")
 sub_start=$(read_frames "$log_dir/sub.frames")
 echo "Both streams are ready; measuring ${duration} wall-clock seconds..."

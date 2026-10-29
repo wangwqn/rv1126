@@ -4,7 +4,6 @@
 #include "vision/core.hpp"
 #include "rkmedia_api.h"
 #include "objects.hpp"
-#include "librtsp/rtsp_demo.h"
 #include <atomic>
 #include <array>
 #include <cstddef>
@@ -165,7 +164,7 @@ public:
     void send_audio(const std::vector<std::uint8_t>& packet, std::uint64_t pts_us);
     void poll();
 private:
-    rtsp_demo_handle server_ = nullptr;
-    rtsp_session_handle sessions_[2] = {nullptr, nullptr};
+    struct Impl;
+    std::unique_ptr<Impl> impl_;
 };
 } // namespace vision

@@ -56,8 +56,8 @@ bash scripts/test_rtsp_udp.sh <开发板当前IP> 60
 bash scripts/test_rtsp_tcp.sh <开发板当前IP> 60
 ```
 
-脚本会先等待主流收到视频帧，再建立子流会话，避免旧版 `librtsp`
-同时处理两个 RTSP SETUP 握手时偶发卡住。日志保存在 `/tmp/rv1126_tcp_test/`。
+脚本会先等待主流收到视频帧，再建立子流会话，使测试窗口从两路均已就绪时开始。
+日志保存在 `/tmp/rv1126_tcp_test/`。
 为避免启动 PTS 跳变干扰，脚本按真实墙钟区间统计解码帧。结束时的
 `exit_code=143` 是脚本到达指定时间后主动停止 ffprobe，不是异常；以最终
 `PASS/FAIL`、帧数和错误扫描为准。

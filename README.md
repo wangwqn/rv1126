@@ -263,8 +263,9 @@ cd /root/rv1126_objects
 
 `--rotation 270` 沿用原摄像头的安装方向；摄像头安装变化时再调整。
 退出用 Ctrl+C。不要带 `--no-ai` 或 `--no-osd`，否则无法看到检测标注。
-板载 2020 版 `librtsp` 在 8 Mbps 的 TCP interleaved 模式下实测会拥塞并损坏
-主流，因此默认仍为 4 Mbps。旧版在 4K IMX415 输入、TNR 开启时只有约 29.5 FPS，
+v1.9.4 已用项目自有的异步 RTSP/RTP-over-TCP 服务端替换板载 2020 版
+`librtsp`。当前默认仍采用真机验证较充分的 4 Mbps；慢客户端由每会话有界队列、
+过期媒体清理和 IDR 重同步处理。旧版在 4K IMX415 输入、TNR 开启时只有约 29.5 FPS，
 且稳态约每秒出现一个 PTS 缺口；降低编码码率不能改善前端吞吐。当前版本改为
 `--sensor-mode 1080p`，在 RKAiq 启动前用 V4L2 subdev API 选择 IMX415 的
 2×2 binning 1080p@30 RAW12 模式。真机连续统计超过 17,000 帧/路时稳态
@@ -276,18 +277,17 @@ cd /root/rv1126_objects
 伪造或缩放标定表，而是明确旁路 ALSC，并在启动时提示一次；TNR 仍由 IQ 配置保持
 开启。正式产品若要求边缘亮度/色彩一致性，应针对当前镜头制作 1920×1080 IQ 标定。
 
-局域网默认使用 RTP/UDP，减轻旧版 `librtsp` 的 TCP interleaved 队头阻塞。RTSP
-控制连接仍使用 TCP 8554，H.264 RTP/RTCP 数据使用客户端协商的 UDP 端口：
+v1.9.4 当前只实现 RTP-over-TCP interleaved；RTSP 控制、H.264 和 G.711A
+均复用 TCP 8554。局域网播放命令为：
 
 ```bash
-ffplay -rtsp_transport udp -buffer_size 2097152 \
-  -reorder_queue_size 512 -max_delay 200000 \
+ffplay -rtsp_transport tcp -fflags nobuffer -flags low_delay \
+  -analyzeduration 100000 -probesize 32768 \
   rtsp://开发板当前IP:8554/live/main_stream
 ```
 
-可用 `bash scripts/test_rtsp_udp.sh 开发板当前IP 60` 同时验收主、子流。ADB forward
-只能转发 TCP，不能用于 RTP/UDP；只有 UDP 被防火墙、NAT 或网络策略阻断时，才回退到
-`-rtsp_transport tcp`。
+可用 `bash scripts/test_rtsp_tcp.sh 开发板当前IP 60 30` 同时验收主、子流。
+正式 Wi-Fi 验收必须使用开发板实际 IP，不能用 ADB forward 代替无线链路。
 不要用“Ubuntu 虚拟机 NAT -> Windows 热点 NAT -> 开发板”做 UDP 验收；
 请在 Windows 宿主机直接播放，或让 Ubuntu 与开发板处在同一个二层网络。
 

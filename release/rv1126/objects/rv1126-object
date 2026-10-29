@@ -73,6 +73,16 @@ validate_watchdog_settings() {
     }
 }
 
+enforce_wlan_low_latency() {
+    [ -d /sys/class/net/wlan0 ] || return 0
+    command -v iwconfig >/dev/null 2>&1 && \
+        iwconfig wlan0 power off >/dev/null 2>&1 || true
+    command -v iw >/dev/null 2>&1 && \
+        iw dev wlan0 set power_save off >/dev/null 2>&1 || true
+    command -v wl >/dev/null 2>&1 && \
+        wl -i wlan0 PM 0 >/dev/null 2>&1 || true
+}
+
 set_default_args() {
     set -- \
         --sensor-mode 1080p \
@@ -97,6 +107,8 @@ launch_pipeline() {
     rm -f "$PID_FILE"
     cd "$APP_DIR"
     : >"$LOG_FILE"
+    # Best effort: boards without wlan0 or iw remain supported.
+    enforce_wlan_low_latency
     nohup start-stop-daemon -S -m -p "$PID_FILE" -x "$APP" -- "$@" \
         >"$LOG_FILE" 2>&1 </dev/null &
     sleep 2
@@ -155,6 +167,7 @@ watchdog_sleep() {
     seconds=$1
     while [ "$seconds" -gt 0 ]; do
         [ ! -e "$WATCHDOG_STOP_FILE" ] || return 1
+        enforce_wlan_low_latency
         sleep 1
         seconds=$((seconds - 1))
     done
@@ -190,6 +203,10 @@ watchdog_loop() {
     previous_sub_venc=
 
     while [ ! -e "$WATCHDOG_STOP_FILE" ]; do
+        # The Wi-Fi manager/firmware can re-enable power saving after a
+        # connection transition. Reassert low-latency mode on every watchdog
+        # cycle so TCP video cannot accumulate multi-second stalls.
+        enforce_wlan_low_latency
         reason=
         current_pid=$(running_pid 2>/dev/null || true)
         if [ -z "$current_pid" ]; then
@@ -380,6 +397,7 @@ status_service() {
 }
 
 health_service() {
+    enforce_wlan_low_latency
     interval=${RV1126_HEALTH_INTERVAL:-3}
     case "$interval" in *[!0-9]*|'') echo "Invalid health interval: $interval" >&2; return 2 ;; esac
     [ "$interval" -ge 1 ] && [ "$interval" -le 30 ] || {
@@ -453,7 +471,11 @@ health_service() {
     version=unknown
     [ ! -s "$APP_DIR/VERSION" ] || version=$(tr -d '[:space:]' <"$APP_DIR/VERSION")
     restarts=$(cat "$WATCHDOG_STATE_FILE" 2>/dev/null || echo 0)
-    echo "Healthy: version=$version pid=$pid watchdog=$watchdog restarts=$restarts interval=${interval}s main_delta=$((main_after-main_before)) sub_delta=$((sub_after-sub_before)) audio_packets=$audio_captured AI=ON OSD=ON AUDIO=ON ErrCnt=$errors TNR=ON RTSP=8554"
+    wlan_ps=NA
+    if command -v iw >/dev/null 2>&1 && iw dev wlan0 info >/dev/null 2>&1; then
+        wlan_ps=$(iw dev wlan0 get power_save 2>/dev/null | awk '{print $3}')
+    fi
+    echo "Healthy: version=$version pid=$pid watchdog=$watchdog restarts=$restarts interval=${interval}s main_delta=$((main_after-main_before)) sub_delta=$((sub_after-sub_before)) audio_packets=$audio_captured AI=ON OSD=ON AUDIO=ON ErrCnt=$errors TNR=ON WLAN_PS=${wlan_ps:-unknown} RTSP=8554"
 }
 
 watchdog_status() {

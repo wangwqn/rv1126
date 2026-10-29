@@ -22,7 +22,7 @@ done
 (( total_seconds >= 60 )) || { echo "TOTAL_SECONDS must be at least 60" >&2; exit 2; }
 (( cycle_seconds >= 60 )) || { echo "CYCLE_SECONDS must be at least 60" >&2; exit 2; }
 
-for command in adb ffmpeg ffprobe python3; do
+for command in adb ffmpeg ffprobe ping python3; do
   command -v "$command" >/dev/null 2>&1 || {
     echo "Missing required command: $command" >&2
     exit 2
@@ -56,11 +56,15 @@ adb shell 'cat /proc/rkispp0 2>/dev/null' >"$output_dir/rkispp-before.txt" 2>&1 
 adb shell 'dmesg | tail -1000' >"$output_dir/dmesg-before.txt" 2>&1 || true
 
 telemetry_loop() {
-  echo "host_time,pid,cpu_total_percent,rss_kb,hwm_kb,threads,fd_count,cpu_temp_mc,npu_temp_mc,restarts,errcnt,main_venc,sub_venc,ai_completed,osd_boxes,audio_sent" \
+  echo "host_time,host_network_reachable,pid,cpu_total_percent,rss_kb,hwm_kb,threads,fd_count,cpu_temp_mc,npu_temp_mc,restarts,errcnt,main_venc,sub_venc,ai_completed,osd_boxes,audio_sent" \
     >"$output_dir/resources.csv"
 
   while [[ ! -e "$stop_file" && $(date +%s) -lt $end_epoch ]]; do
     host_time=$(date -Is)
+    host_network_reachable=0
+    if ping -c 3 -W 1 "$board_ip" >/dev/null 2>&1; then
+      host_network_reachable=1
+    fi
     row=$(adb shell '
       pid=$(cat /var/run/rv1126-object.pid 2>/dev/null)
       if [ -z "$pid" ] || [ ! -r "/proc/$pid/stat" ]; then
@@ -105,7 +109,8 @@ telemetry_loop() {
 
       echo "$pid,$cpu,${rss:-0},${hwm:-0},${threads:-0},$fds,$cpu_temp,$npu_temp,$restarts,$errcnt,${main:-0},${sub:-0},${ai:-0},${osd:-0},${audio:-0}"
     ' 2>>"$output_dir/telemetry-errors.log" | tr -d '\r')
-    printf '%s,%s\n' "$host_time" "$row" >>"$output_dir/resources.csv"
+    printf '%s,%s,%s\n' "$host_time" "$host_network_reachable" "$row" \
+      >>"$output_dir/resources.csv"
 
     for _ in $(seq 1 55); do
       [[ -e "$stop_file" || $(date +%s) -ge $end_epoch ]] && break
@@ -217,6 +222,7 @@ npu_temp = values("npu_temp_mc")
 restarts = values("restarts")
 errors = values("errcnt")
 osd = values("osd_boxes")
+network = values("host_network_reachable")
 
 with open(destination, "w", encoding="utf-8") as output:
     output.write(f"samples={len(rows)}\n")
@@ -236,6 +242,7 @@ with open(destination, "w", encoding="utf-8") as output:
     output.write(f"watchdog_restarts_max={max(restarts, default=float('nan')):.0f}\n")
     output.write(f"errcnt_max={max(errors, default=float('nan')):.0f}\n")
     output.write(f"osd_boxes_max={max(osd, default=float('nan')):.0f}\n")
+    output.write(f"host_network_unreachable_samples={sum(value < 0.5 for value in network)}\n")
 PY
 
 {
@@ -263,6 +270,11 @@ PY
 overall=PASS
 (( rtsp_fail == 0 && health_fail == 0 && av_fail == 0 )) || overall=FAIL
 grep -q '^Healthy:' "$output_dir/final-health.txt" || overall=FAIL
+network_failures=$(sed -n 's/^host_network_unreachable_samples=//p' \
+  "$output_dir/metrics-summary.txt")
+if [[ "${network_failures:-0}" -gt 0 ]]; then
+  overall=INVALID_NETWORK
+fi
 echo "result=$overall" | tee -a "$output_dir/result.txt"
 echo "output_dir=$output_dir" | tee -a "$output_dir/result.txt"
 echo "report=$output_dir/report.md" | tee -a "$output_dir/result.txt"

@@ -20,14 +20,13 @@ struct Config {
     int sub_width = 640, sub_height = 360;
     int rotation = 0;
     int fps = 30, ai_fps = 3;
-    // The bundled 2020 librtsp TCP-interleaved path becomes unstable near
-    // 8 Mbit/s on this RV1126 image. 4 Mbit/s was verified with two clients
-    // while preserving 1080P30; see docs/board-validation.md.
+    // Keep the board-validated 4 Mbit/s quality baseline. The asynchronous
+    // RTSP sender bounds each client's backlog and resynchronizes at an IDR.
     int bitrate = 4000000, sub_bitrate = 600000;
     int pool_buffers = 8;
     int packet_queue = 8;
-    // The bundled librtsp supports PCMA/PCMU but not AAC. Capture stereo PCM
-    // through ALSA, downmix to mono, and publish standards-compatible PCMA.
+    // Capture stereo PCM through ALSA, downmix to mono, and publish
+    // standards-compatible PCMA through the RTSP audio track.
     bool audio = true;
     std::string audio_device = "plughw:0,0";
     std::string audio_mixer = "hw:0";

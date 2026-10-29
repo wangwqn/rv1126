@@ -76,6 +76,7 @@ void configure_capture_source(const Config& config) {
 void warn_rk(int status, const char* operation) noexcept {
     if (status) std::fprintf(stderr, "cleanup: %s failed (%d)\n", operation, status);
 }
+
 // Bracket CPU reads of DMA memory, even though the caller never copies pixels.
 class CpuRead : Noncopyable {
 public:
@@ -836,53 +837,4 @@ std::size_t AlsaCapture::read_frames(std::int16_t* interleaved,
     return static_cast<std::size_t>(result);
 }
 
-RtspServer::RtspServer(int port, bool audio) {
-    server_ = create_rtsp_demo(port);
-    if (!server_) throw std::runtime_error("RTSP server creation failed");
-    try {
-        const char* paths[] = {"/live/main_stream", "/live/sub_stream"};
-        for (int i = 0; i < 2; ++i) {
-            sessions_[i] = rtsp_new_session(server_, paths[i]);
-            if (!sessions_[i]) throw std::runtime_error("RTSP session creation failed");
-            check_rk(rtsp_set_video(sessions_[i], RTSP_CODEC_ID_VIDEO_H264, nullptr, 0), "RTSP set video");
-            if (audio)
-                check_rk(rtsp_set_audio(sessions_[i], RTSP_CODEC_ID_AUDIO_G711A,
-                                        nullptr, 0),
-                         "RTSP set G.711A audio");
-            const std::uint64_t relative = rtsp_get_reltime();
-            const std::uint64_t ntp = rtsp_get_ntptime();
-            check_rk(rtsp_sync_video_ts(sessions_[i], relative, ntp),
-                     "RTSP sync timestamp");
-            if (audio)
-                check_rk(rtsp_sync_audio_ts(sessions_[i], relative, ntp),
-                         "RTSP sync audio timestamp");
-        }
-    } catch (...) { rtsp_del_demo(server_); server_ = nullptr; throw; }
-}
-RtspServer::~RtspServer() { if (server_) rtsp_del_demo(server_); }
-void RtspServer::send(int stream, const Frame& packet) {
-    const uint64_t pts = packet->pts();
-    const size_t size = RK_MPI_MB_GetSize(packet->get());
-    if (!size || size > INT_MAX) throw std::runtime_error("invalid encoded packet size");
-    CpuRead access(packet->get());
-    const auto* data = static_cast<const uint8_t*>(RK_MPI_MB_GetPtr(packet->get()));
-    if (!data) throw std::runtime_error("encoded packet mapping failed");
-    // rtsp_tx_video may return a non-negative byte count, rather than zero.
-    if (rtsp_tx_video(sessions_[stream], data, static_cast<int>(size), pts) < 0)
-        throw std::runtime_error("RTSP video transmit failed");
-}
-void RtspServer::send_audio(const std::vector<std::uint8_t>& packet,
-                            std::uint64_t pts_us) {
-    if (packet.empty() || packet.size() > static_cast<std::size_t>(INT_MAX))
-        throw std::runtime_error("invalid encoded audio packet size");
-    for (auto* session : sessions_)
-        if (rtsp_tx_audio(session, packet.data(), static_cast<int>(packet.size()),
-                          pts_us) < 0)
-            throw std::runtime_error("RTSP audio transmit failed");
-}
-void RtspServer::poll() {
-    errno = 0;
-    if (rtsp_do_event(server_) < 0 && errno != EINTR)
-        throw std::runtime_error("RTSP event processing failed");
-}
 } // namespace vision

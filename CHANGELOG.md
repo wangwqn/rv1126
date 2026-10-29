@@ -3,6 +3,26 @@
 本项目使用语义化版本号 `主版本.次版本.修订号`。每个公开版本都对应一个带注释的
 Git 标签，标签指向的提交可独立检出、校验、编译和部署。
 
+## 1.9.4 - 2026-10-29
+
+- 移除 2020 年静态 `librtsp` 及 Rockchip 2019 live555 包装，改为
+  项目自有的非阻塞 RTSP/RTP-over-TCP 服务端；保持主、子流 URL
+  和 H.264 + G.711A track 不变。每个客户端独立管理 CSeq、Session、
+  RTP sequence、SSRC 和非阻塞输出队列，避免旧库的会话串扰。
+- 实现 Annex-B SPS/PPS/IDR 解析、RFC 6184 单 NAL/FU-A 分包和
+  PLAY 时主动请求 IDR。一个编码帧的所有 RTP interleaved 记录
+  合并为一个连续缓冲，减少 ARM 端频繁分配和系统调用。
+- 对慢客户端使用 512 KiB 有界队列；拥塞超限时丢弃过期
+  RTP、等待 TCP 恢复可写后只请求一次 IDR，保持 RTSP Session
+  而不断开。可控的20秒停读测试已验证同一连接能自动续播。
+- 启用 `TCP_NODELAY`、64 KiB `SO_SNDBUF`、AF41 DSCP/WMM 视频优先级；
+  管理脚本每秒重申 `iwconfig power off`、cfg80211 power-save off
+  和 Broadcom `wl PM 0`，缩短 WLAN 固件周期性回开省电的窗口。
+- 5分钟及10分钟 Wi-Fi/TCP 双流均获得30.00 FPS通过记录，
+  无 CSeq/NAL/RTP/解码错误。但 Windows 热点经 VMware 桥接至
+  Ubuntu 的正式30分钟验收仍复现数秒级主流 TCP 停顿，因此
+  本版未宣称长稳通过，12小时正式验收尚未启动。
+
 ## 1.9.3 - 2026-10-27
 
 - 修复 Buildroot `rcS` 开机环境不加载 `RkEnv.sh`，导致应用因

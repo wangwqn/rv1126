@@ -81,7 +81,7 @@ python3 scripts/plot_latency_csv.py ./latency.csv ./latency.svg \
 | `osd.update` | 调用 RGA region 更新前 | 更新返回 | 坐标缩放后的 region/标签配置调用 |
 | `main/sub.venc_age` | 视频帧 PTS | H.264 MEDIA_BUFFER 被取到 | 传感器/ISP/TNR、VI、RGA、VENC |
 | `main/sub.rtsp_wait` | 编码包取到 | RTSP 线程开始发送 | 无损队列等待和发送线程调度 |
-| `main/sub.send` | 调用 `rtsp_tx_video` 前 | 调用返回 | 旧 `librtsp` 的服务端发送调用 |
+| `main/sub.send` | 提交异步 RTSP 事件前 | 调用返回 | 服务端媒体队列提交耗时，不包含客户端网络发送 |
 | `main/sub.server_total` | 视频帧 PTS | `rtsp_tx_video` 返回 | 板端到网络发送 API 返回的完整路径 |
 
 这些名称刻意区分“可观察边界”和“单个硬件模块耗时”。当前 RKMedia 使用硬件

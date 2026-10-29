@@ -43,8 +43,9 @@ if(NOT RK_VISION_BUILD_DEVICE)
     else()
         message(STATUS "RK device application and tests are disabled; no build targets were requested")
     endif()
-    return()
 endif()
+
+if(RK_VISION_BUILD_DEVICE)
 
 set(RK_SDK_SYSROOT "${CMAKE_SYSROOT}" CACHE PATH
     "Sysroot containing the target RKMedia, RGA, RockX and optional RKAiq SDK")
@@ -118,15 +119,11 @@ if(RK_VISION_ENABLE_ISP)
     list(APPEND RK_ISP_LIBRARIES "${RKAIQ_LIBRARY}")
 endif()
 
-set(RK_RTSP_LIBRARY "${PROJECT_SOURCE_DIR}/librtsp/librtsp.a")
-if(NOT EXISTS "${RK_RTSP_LIBRARY}")
-    message(FATAL_ERROR "Missing target RTSP static library: ${RK_RTSP_LIBRARY}")
-endif()
-
 set(RK_VISION_DEVICE_SOURCES
     rkmedia_rockx_face_detection_rtsp.cpp
     src/pipeline.cpp
-    src/rk_backend.cpp)
+    src/rk_backend.cpp
+    src/rtsp_server.cpp)
 foreach(source IN LISTS RK_VISION_DEVICE_SOURCES)
     if(NOT EXISTS "${PROJECT_SOURCE_DIR}/${source}")
         message(FATAL_ERROR "Missing device source file: ${PROJECT_SOURCE_DIR}/${source}")
@@ -148,8 +145,7 @@ add_executable(object_image ../image_main.cpp)
 target_link_libraries(object_image PRIVATE object_detector)
 target_include_directories(rkmedia_rockx_face_detection_rtsp PRIVATE
     "${PROJECT_SOURCE_DIR}/include"
-    "${PROJECT_SOURCE_DIR}"
-    "${PROJECT_SOURCE_DIR}/librtsp")
+    "${PROJECT_SOURCE_DIR}")
 target_include_directories(rkmedia_rockx_face_detection_rtsp SYSTEM PRIVATE
     "${RK_SDK_SYSROOT}/usr/include"
     "${RKMEDIA_INCLUDE_DIR}"
@@ -160,7 +156,6 @@ if(RK_VISION_ENABLE_ISP)
 endif()
 target_link_libraries(rkmedia_rockx_face_detection_rtsp PRIVATE
     object_detector
-    "${RK_RTSP_LIBRARY}"
     "${EASYMEDIA_LIBRARY}"
     "${RGA_LIBRARY}"
     "${ALSA_LIBRARY}"
@@ -169,3 +164,4 @@ target_link_libraries(rkmedia_rockx_face_detection_rtsp PRIVATE
     ${CMAKE_DL_LIBS})
 
 message(STATUS "RK device target enabled (sysroot: ${RK_SDK_SYSROOT}, ISP: ${RK_VISION_ENABLE_ISP})")
+endif()
