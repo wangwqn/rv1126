@@ -5,6 +5,7 @@
 #include <atomic>
 #include <cerrno>
 #include <chrono>
+#include <cstdint>
 #include <climits>
 #include <cstdlib>
 #include <cstdio>
@@ -64,6 +65,13 @@ std::string trim(std::string value) {
 
 std::uint32_t rtp_timestamp(std::uint64_t pts_us, std::uint32_t clock_rate) {
     return static_cast<std::uint32_t>((pts_us * clock_rate) / 1000000ULL);
+}
+
+bool rtp_timestamp_after(std::uint32_t current, std::uint32_t previous) {
+    // RTP timestamps wrap modulo 2^32. A signed delta implements the ordering
+    // from RFC 3550 as long as samples are less than half a timestamp cycle
+    // apart, which is always true for adjacent live video frames.
+    return static_cast<std::int32_t>(current - previous) > 0;
 }
 
 std::uint32_t next_identifier() {
@@ -155,6 +163,9 @@ struct RtspServer::Impl {
         std::uint16_t audio_sequence = 0;
         std::uint32_t video_ssrc = 0;
         std::uint32_t audio_ssrc = 0;
+        std::uint32_t last_video_timestamp = 0;
+        bool video_timestamp_valid = false;
+        std::uint64_t nonmonotonic_video_drops = 0;
         std::string session;
         std::string input;
         std::deque<OutputPacket> output;
@@ -824,10 +835,33 @@ private:
                         !client.playing || !client.video_setup ||
                         client.stream != event.stream)
                         continue;
-                    if (client.waiting_for_idr) {
-                        if (!idr) continue;
-                        client.waiting_for_idr = false;
+                    if (client.waiting_for_idr && !idr) continue;
+                    // RequestIDR can overtake already queued VENC output: an
+                    // IDR with a newer PTS is sometimes followed by stale P
+                    // frames. Sending those frames makes FFmpeg report a
+                    // non-monotonic DTS and can corrupt muxer timing. Keep the
+                    // RTP timeline strictly forward-moving for each client.
+                    if (client.video_timestamp_valid &&
+                        !rtp_timestamp_after(timestamp,
+                                             client.last_video_timestamp)) {
+                        ++client.nonmonotonic_video_drops;
+                        if (client.nonmonotonic_video_drops == 1 ||
+                            (client.nonmonotonic_video_drops &
+                             (client.nonmonotonic_video_drops - 1)) == 0) {
+                            std::fprintf(
+                                stderr,
+                                "rtsp: stream=%d dropped non-monotonic video "
+                                "timestamp count=%llu current=%u previous=%u\n",
+                                client.stream,
+                                static_cast<unsigned long long>(
+                                    client.nonmonotonic_video_drops),
+                                timestamp, client.last_video_timestamp);
+                        }
+                        continue;
                     }
+                    client.last_video_timestamp = timestamp;
+                    client.video_timestamp_valid = true;
+                    if (client.waiting_for_idr) client.waiting_for_idr = false;
                     packetize_video(client, nals, timestamp);
                 }
             } catch (const std::exception& error) {

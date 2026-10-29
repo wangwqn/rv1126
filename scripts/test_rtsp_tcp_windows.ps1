@@ -157,7 +157,7 @@ finally {
 
 $expectedFrames = $DurationSeconds * $ExpectedFps
 $minimumFrames = $expectedFrames - 2
-$failurePattern = 'corrupt|error while decoding|Invalid NAL|non-existing PPS|RTP: missed|max delay reached|Invalid data|timed out|Connection refused|CSeq .*expected'
+$failurePattern = 'corrupt|error while decoding|Invalid NAL|non-existing PPS|RTP: missed|max delay reached|Invalid data|timed out|Connection refused|CSeq .*expected|non.?monotonically increasing dts'
 $failed = $timedOut
 $summary = @()
 
