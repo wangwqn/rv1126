@@ -1,5 +1,14 @@
 # 实测状态（2026-11-02）
 
+## 1.12.1 DMA审计真机数据修正候选
+
+- 1.12.0真机首批数据确认主/子NV12路径CPU映射为0，cache-sync、
+  MEDIA_BUFFER释放与PTS均无错误。
+- 发现VENC压缩包预期无DMA FD被误报为原始图像错误，已拆分为
+  `missing`和 `required_error`。
+- 发现AI局部变量额外持有BGR DMA-BUF约200 ms，已改为推理返回后立即释放。
+- 待完成签名OTA真机部署与修正后数据对比。
+
 ## 1.12.0 DMA-BUF零拷贝审计候选
 
 - 已完成 `MEDIA_BUFFER` RAII生命周期、DMA FD、CPU cache-sync映射、

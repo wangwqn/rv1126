@@ -55,7 +55,8 @@ struct DmaAuditSnapshot {
     std::uint64_t peak_handles = 0;
     std::uint64_t live_fds = 0;
     std::uint64_t peak_fds = 0;
-    std::uint64_t invalid_fds = 0;
+    std::uint64_t missing_fds = 0;
+    std::uint64_t required_dma_errors = 0;
     std::uint64_t release_errors = 0;
     std::uint64_t overdue_handles = 0;
     std::uint64_t max_live_hold_us = 0;
@@ -113,7 +114,8 @@ private:
     mutable std::mutex mutex_;
     std::uint64_t next_lease_ = 1;
     std::uint64_t acquired_ = 0, released_ = 0, peak_handles_ = 0;
-    std::uint64_t peak_fds_ = 0, invalid_fds_ = 0, release_errors_ = 0;
+    std::uint64_t peak_fds_ = 0, missing_fds_ = 0;
+    std::uint64_t required_dma_errors_ = 0, release_errors_ = 0;
     std::uint64_t cpu_accesses_ = 0, cpu_active_ = 0, cpu_peak_ = 0;
     std::uint64_t cpu_bytes_ = 0, cpu_sync_errors_ = 0;
     std::array<std::uint64_t, static_cast<std::size_t>(CpuAccessKind::count)>

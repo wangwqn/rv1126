@@ -298,7 +298,8 @@ public:
                 << audit.max_live_hold_us / 1000.0
                 << ") fd(live=" << audit.live_fds
                 << ", peak=" << audit.peak_fds
-                << ", invalid=" << audit.invalid_fds
+                << ", missing=" << audit.missing_fds
+                << ", required_error=" << audit.required_dma_errors
                 << ", release_error=" << audit.release_errors << ")"
                 << " cpu(map=" << audit.cpu_accesses
                 << ", active=" << audit.cpu_active
@@ -321,7 +322,7 @@ public:
                     << ", bytes=" << audit.kernel.global_bytes << ')';
             else
                 out << " kernel_dma=unavailable";
-            if (audit.overdue_handles || audit.invalid_fds ||
+            if (audit.overdue_handles || audit.required_dma_errors ||
                 audit.release_errors || audit.cpu_sync_errors)
                 out << " WARNING=buffer_lifecycle";
 
@@ -438,8 +439,9 @@ private:
 
     void ai_capture_loop() {
         auto last_frame = Clock::now();
+        const int wait_ms = std::max(100, 1500 / config_.ai_fps);
         while (running_.load()) {
-            auto source = get_buffer(RK_ID_RGA, 2, 100);
+            auto source = get_buffer(RK_ID_RGA, 2, wait_ms);
             if (!source) {
                 if (elapsed_ms(last_frame) > static_cast<uint64_t>(config_.stall_timeout_ms))
                     throw std::runtime_error("AI source stalled");
@@ -468,6 +470,10 @@ private:
             if (!interruptible_delay(config_.ai_delay_ms)) return;
             const auto infer_start = Clock::now();
             auto detection = detector_->infer(source.frame);
+            // RockX/RKNN has finished consuming the BGR view. Return its
+            // DMA-BUF lease immediately instead of retaining it until the
+            // next low-rate AI sample overwrites this local variable.
+            source.frame.reset();
             const auto infer_end = Clock::now();
             detection.completed_at = infer_end;
             if (latency_active(infer_end))

@@ -52,8 +52,15 @@ int main() {
 
     const auto invalid = audit.acquire(vision::DmaRoute::other, -1, 0, 0);
     snapshot = audit.snapshot();
-    check(snapshot.invalid_fds == 1, "non-DMA MEDIA_BUFFER is detected");
+    check(snapshot.missing_fds == 1 && snapshot.required_dma_errors == 0,
+          "non-DMA compressed MEDIA_BUFFER is counted without a false error");
     audit.release(invalid, false);
+
+    const auto bad_image = audit.acquire(vision::DmaRoute::ai_rga, -1, 1024, 0);
+    snapshot = audit.snapshot();
+    check(snapshot.required_dma_errors == 1,
+          "missing DMA fd on an RGA image is a zero-copy violation");
+    audit.release(bad_image, false);
 
     std::cout << "DMA audit tests passed\n";
     return 0;

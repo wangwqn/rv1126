@@ -99,8 +99,8 @@ class WebApiTest(unittest.TestCase):
         log = self.root / "dma.log"
         log.write_text(
             "dma_buf handles(live=2, peak=8, acquired=100, released=98, "
-            "overdue=0, max_live_ms=3.00) fd(live=2, peak=8, invalid=0, "
-            "release_error=0) cpu(map=90, active=0, peak=1, bytes=4096, "
+            "overdue=0, max_live_ms=3.00) fd(live=2, peak=8, missing=80, "
+            "required_error=0, release_error=0) cpu(map=90, active=0, peak=1, bytes=4096, "
             "nv12=0, bgr=10, encoded=80, sync_error=0) "
             "process_dma(fds=49, bytes=123456) kernel_dma(objects=52, bytes=234567)\n"
             "dma_wait_ms p50/p95/p99/max ai_rga2(get=1/2/3/4)\n"
@@ -113,6 +113,8 @@ class WebApiTest(unittest.TestCase):
         self.assertEqual(metrics["dma_encoded_cpu_maps"], 80)
         self.assertEqual(metrics["dma_process_fds"], 49)
         self.assertEqual(metrics["dma_kernel_objects"], 52)
+        self.assertEqual(metrics["dma_missing_fds"], 80)
+        self.assertEqual(metrics["dma_required_fd_errors"], 0)
 
     def test_health_wait_retries_during_media_warmup(self):
         attempts = []

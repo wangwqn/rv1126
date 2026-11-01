@@ -51,7 +51,11 @@ std::uint64_t DmaAudit::acquire(DmaRoute route, int fd, std::size_t bytes,
     ++acquired_;
     peak_handles_ = std::max<std::uint64_t>(peak_handles_, leases_.size() + 1);
     if (fd < 0) {
-        ++invalid_fds_;
+        ++missing_fds_;
+        // RGA image output is required to remain DMA-backed. VENC produces a
+        // compressed CPU-visible packet in this old RKMedia implementation;
+        // a missing FD there does not imply a raw NV12 copy.
+        if (route == DmaRoute::ai_rga) ++required_dma_errors_;
     } else {
         ++fd_refs_[fd];
         peak_fds_ = std::max<std::uint64_t>(peak_fds_, fd_refs_.size());
@@ -168,7 +172,8 @@ DmaAuditSnapshot DmaAudit::snapshot() const {
         result.peak_handles = peak_handles_;
         result.live_fds = fd_refs_.size();
         result.peak_fds = peak_fds_;
-        result.invalid_fds = invalid_fds_;
+        result.missing_fds = missing_fds_;
+        result.required_dma_errors = required_dma_errors_;
         result.release_errors = release_errors_;
         result.cpu_accesses = cpu_accesses_;
         result.cpu_active = cpu_active_;

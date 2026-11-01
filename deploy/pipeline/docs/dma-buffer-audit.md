@@ -16,7 +16,9 @@ dma_graph main=... sub=... ai=... osd=... pool_config(...)
 `RK_MPI_SYS_GetMediaBuffer` until the matching RAII destructor calls
 `RK_MPI_MB_ReleaseBuffer`. `live == 0` is not expected while the pipeline is
 busy, but `acquired - released` must stay bounded. `overdue` reports a lease
-held for at least one second. Any `invalid`, `release_error`, `sync_error` or
+held for at least one second. VENC compressed packets are CPU-visible and may
+increase `missing`; only `required_error` means a required RGA image lost its
+DMA backing. Any `required_error`, `release_error`, `sync_error` or
 `WARNING=buffer_lifecycle` is a failure that needs investigation.
 
 `process_dma` scans `/proc/self/fdinfo` for `exp_name`; `kernel_dma` reads
@@ -37,8 +39,9 @@ says `exact_occupancy=not_exposed_by_RKMedia` instead of inventing a percentage.
   import/copy, which this first-generation SDK does not expose.
 - OSD: CPU renders small BGRA box/label bitmaps, then the RGA region API blends
   them into the main NV12 hardware path. The 1080p frame itself is not mapped.
-- RTSP: VENC output is already compressed H.264. It must be CPU-read to split
-  NAL units and packetize RTP; this is not a raw NV12 frame copy.
+- RTSP: VENC output is already compressed H.264 and this BSP may expose it
+  without a DMA FD. It must be CPU-read to split NAL units and packetize RTP;
+  this is not a raw NV12 frame copy.
 
 Therefore the key runtime invariant is `cpu(nv12=0)`. BGR and encoded mappings
 are intentional and must have `sync_error=0`.
