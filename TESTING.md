@@ -6,6 +6,7 @@
 
 ```bash
 python3 -m unittest discover -s deploy/web/tests -v
+python3 -m unittest discover -s deploy/ota/tests -v
 python3 -m py_compile deploy/web/rv1126_web.py
 node --check deploy/web/web-app.js
 sh -n deploy/web/rv1126-web release/rv1126/objects/rv1126-object
@@ -16,9 +17,38 @@ sh -n deploy/web/rv1126-web release/rv1126/objects/rv1126-object
 ```bash
 BOARD_IP=192.168.137.176
 TOKEN=$(adb shell '/root/rv1126_objects/rv1126-web token' | tr -d '\r\n')
-curl -fsS "http://$BOARD_IP:8080/api/health"
-curl -fsS -H "Authorization: Bearer $TOKEN" "http://$BOARD_IP:8080/api/status"
-curl -fsS -H "Authorization: Bearer $TOKEN" "http://$BOARD_IP:8080/api/metrics"
+CA_CERT=/path/to/device-ca.crt
+curl --cacert "$CA_CERT" -fsS "https://$BOARD_IP/api/health"
+curl --cacert "$CA_CERT" -fsS -H "Authorization: Bearer $TOKEN" "https://$BOARD_IP/api/status"
+curl --cacert "$CA_CERT" -fsS -H "Authorization: Bearer $TOKEN" "https://$BOARD_IP/api/metrics"
+```
+
+对外连接 `BOARD_IP:8080` 必须失败；板端 `127.0.0.1:8080` 必须可用，
+443必须由Nginx监听。自签名证书只能用于开发测试，不得用 `curl -k`
+作为正式验收结果。
+
+## 签名A/B OTA回归
+
+```bash
+# 私钥目录必须在仓库外
+./scripts/create_ota_signing_key.sh "$KEY_DIR"
+./scripts/build_ota_package.py \
+  --release release/rv1126 \
+  --private-key "$KEY_DIR/rv1126-ota-signing-private.pem" \
+  --trusted-key "$KEY_DIR/<key-id>.json" \
+  --min-version 1.10.1 \
+  --output /tmp/rv1126-v1.11.0.rvota
+```
+
+必须分别验证：正常签名包、改动1字节的包、错误设备型号、相同序号重放、
+低序号降级、候选启动失败回滚和切换中断电恢复。通过后检查：
+
+```bash
+adb shell 'readlink -f /root/rv1126_objects'
+adb shell 'cat /userdata/rv1126-ota/active.json'
+adb shell 'cat /userdata/rv1126-ota/transaction.json'
+adb shell '/root/rv1126_objects/rv1126-object health'
+adb shell '/root/rv1126_objects/rv1126-web health'
 ```
 
 浏览器中再保存一次“不立即应用”配置和一组区域/越线，刷新后

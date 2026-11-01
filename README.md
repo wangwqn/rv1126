@@ -14,7 +14,7 @@
 ```bash
 git clone git@github.com:wangwqn/rv1126.git
 cd rv1126
-git checkout v1.8.8
+git checkout v1.11.0
 bash scripts/verify_checkout.sh
 ```
 
@@ -30,7 +30,7 @@ P50/P95/P99/max 统计；指标边界、真机结果和一键抓取方法见
 `bash scripts/capture_runtime_latency.sh 60`，脚本会自动拉取 CSV、重新计算全量
 百分位并生成不依赖第三方 Python 包的 SVG 图。
 
-相同开发板/rootfs 可直接上传已经编译好的物体检测发布包：
+尚未迁移A/B目录的相同开发板/rootfs，可使用ADB部署已编译的发布包：
 
 ```bash
 bash scripts/deploy_release.sh --restart
@@ -41,10 +41,11 @@ adb shell '/root/rv1126_objects/rv1126-web start'
 adb shell '/root/rv1126_objects/rv1126-web token'
 ```
 
-然后在同一 Wi-Fi 的电脑打开 `http://开发板IP:8080/`，输入上一条命令
-显示的令牌。管理服务可查看状态/指标/事件，修改码率、GOP、AI FPS、
-阈值和 OSD 参数，绘制归一化区域/越线，导出日志，以及校验和切换
-RKNN 模型。Web 服务是独立进程，不参与视频帧数据路径。
+产品模式必须按 `handoff/SECURE_OTA.md` 完成RSA公钥配置、A/B迁移和
+Nginx HTTPS。迁移后禁止ADB原地覆盖，只允许签名 `.rvota` 包。同一Wi-Fi
+的电脑使用 `https://开发板IP/`；Python Web只监听
+`127.0.0.1:8080`。管理服务支持状态/指标/配置/日志/模型，以及
+签名OTA上传、验签、原子切换和自动回滚。Web进程不参与视频帧数据路径。
 
 预编译程序依赖当前板载 RKMedia、RGA、RKNN、RKAiq、ALSA 和 C/C++ 运行库 ABI；不同 BSP
 必须按本文后面的交叉编译步骤重新生成。发布包详情见 `release/rv1126/README.md`。

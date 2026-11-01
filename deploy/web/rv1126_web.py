@@ -5,10 +5,12 @@ import argparse
 import collections
 import hashlib
 import hmac
+import ipaddress
 import io
 import json
 import os
 import re
+import secrets
 import shutil
 import subprocess
 import tarfile
@@ -23,6 +25,10 @@ from pathlib import Path
 
 MAX_JSON = 64 * 1024
 MAX_MODEL = 64 * 1024 * 1024
+MAX_OTA = 128 * 1024 * 1024
+AUTH_FAILURE_LIMIT = 5
+AUTH_FAILURE_WINDOW = 60
+AUTH_BLOCK_SECONDS = 300
 STATIC_FILES = {
     "/": ("web-index.html", "text/html; charset=utf-8"),
     "/index.html": ("web-index.html", "text/html; charset=utf-8"),
@@ -78,17 +84,35 @@ def file_sha256(path):
 
 class ManagementState:
     def __init__(self, root, token_file):
-        self.root = Path(root).resolve()
+        # Keep the stable A/B symlink as the logical root. Resolving it would
+        # make model/state paths unexpectedly follow a particular release.
+        self.root = Path(root).absolute()
         self.token_file = Path(token_file)
         self.controller = self.root / "rv1126-object"
         self.runtime_config = self.root / "runtime-config.json"
         self.runtime_args = self.root / "runtime.args"
         self.events_file = self.root / "events" / "events.jsonl"
-        self.model_root = self.root.parent / "rv1126_models"
+        default_model_root = (Path("/root/rv1126_models")
+                              if self.root == Path("/root/rv1126_objects")
+                              else self.root.parent / "rv1126_models")
+        self.model_root = Path(os.environ.get("RV1126_MODEL_ROOT", str(default_model_root)))
         self.model_stage = self.model_root / "staging"
         self.model_active = self.model_root / "active"
         self.model_history = self.model_root / "history"
         self.lock = threading.RLock()
+        self.auth_lock = threading.Lock()
+        self.auth_failures = {}
+        self.auth_blocks = {}
+        self.audit_file = Path(os.environ.get(
+            "RV1126_AUDIT_FILE", str(self.root / "audit.jsonl")))
+        self.cloud_credential = Path(os.environ.get(
+            "RV1126_CLOUD_CREDENTIAL", "/userdata/rv1126-security/device-credential.env"))
+        self.ota_manager = Path(os.environ.get(
+            "RV1126_OTA_MANAGER", "/root/rv1126_ota/rv1126_ota.py"))
+        self.ota_bundle = Path(os.environ.get(
+            "RV1126_OTA_BUNDLE", "/userdata/rv1126-ota/incoming/update.rvota"))
+        self.ota_log = Path(os.environ.get(
+            "RV1126_OTA_LOG", "/tmp/rv1126-ota.log"))
         self.cpu_sample = None
 
     @staticmethod
@@ -116,6 +140,60 @@ class ManagementState:
     def authorized(self, header):
         expected = self.token()
         return bool(expected) and hmac.compare_digest(header, "Bearer " + expected)
+
+    def check_authorization(self, header, client):
+        now = time.monotonic()
+        with self.auth_lock:
+            blocked_until = self.auth_blocks.get(client, 0)
+            if blocked_until > now:
+                return False, max(1, int(blocked_until - now)), True
+            if self.authorized(header):
+                self.auth_failures.pop(client, None)
+                self.auth_blocks.pop(client, None)
+                return True, 0, False
+            failures = self.auth_failures.setdefault(client, collections.deque())
+            while failures and failures[0] < now - AUTH_FAILURE_WINDOW:
+                failures.popleft()
+            failures.append(now)
+            if len(failures) >= AUTH_FAILURE_LIMIT:
+                self.auth_blocks[client] = now + AUTH_BLOCK_SECONDS
+                failures.clear()
+                return False, AUTH_BLOCK_SECONDS, True
+            return False, 0, False
+
+    def rotate_token(self):
+        value = secrets.token_hex(32)
+        atomic_write(self.token_file, value + "\n", 0o600)
+        return value
+
+    def invalidate_token(self):
+        atomic_write(self.token_file, b"", 0o600)
+
+    def audit(self, action, client, result, detail=""):
+        record = {
+            "time": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            "client": str(client)[:64],
+            "action": str(action)[:96],
+            "result": str(result)[:32],
+        }
+        if detail:
+            record["detail"] = str(detail).replace("\n", " ")[:256]
+        self.audit_file.parent.mkdir(parents=True, exist_ok=True)
+        line = json.dumps(record, ensure_ascii=False, separators=(",", ":")) + "\n"
+        with self.lock:
+            with self.audit_file.open("a", encoding="utf-8") as handle:
+                handle.write(line)
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.chmod(self.audit_file, 0o600)
+
+    def security_status(self):
+        return {
+            "token_active": bool(self.token()),
+            "https_required": True,
+            "cloud_credential_provisioned": self.cloud_credential.is_file(),
+            "cloud_credential_separate": self.cloud_credential != self.token_file,
+        }
 
     def _parse_saved_args(self, config):
         source = self.runtime_args
@@ -544,6 +622,9 @@ class ManagementState:
         files = {
             "application.log": Path("/tmp/rv1126-object.log"),
             "watchdog.log": Path("/tmp/rv1126-object-watchdog.log"),
+            "web.log": Path("/tmp/rv1126-web.log"),
+            "ota.log": self.ota_log,
+            "security-audit.jsonl": self.audit_file,
             "runtime-config.json": self.runtime_config,
             "model-manifest.json": self.model_active / "MANIFEST.json",
         }
@@ -667,6 +748,80 @@ class ManagementState:
                 raise
         return {"activated": True, "manifest": manifest}
 
+    def save_ota_upload(self, expected_sha, source, length):
+        if not re.fullmatch(r"[0-9a-fA-F]{64}", expected_sha or ""):
+            raise ValueError("a SHA-256 digest is required")
+        if length < 1 or length > MAX_OTA:
+            raise ValueError("invalid OTA upload size")
+        self.ota_bundle.parent.mkdir(parents=True, exist_ok=True)
+        temporary = self.ota_bundle.with_suffix(self.ota_bundle.suffix + ".upload")
+        digest = hashlib.sha256()
+        remaining = length
+        try:
+            with temporary.open("wb") as handle:
+                while remaining:
+                    chunk = source.read(min(1024 * 1024, remaining))
+                    if not chunk:
+                        raise ValueError("incomplete OTA upload")
+                    handle.write(chunk)
+                    digest.update(chunk)
+                    remaining -= len(chunk)
+                handle.flush()
+                os.fsync(handle.fileno())
+            actual = digest.hexdigest()
+            if not hmac.compare_digest(actual.lower(), expected_sha.lower()):
+                raise ValueError("OTA SHA-256 mismatch")
+            os.chmod(temporary, 0o600)
+            os.replace(temporary, self.ota_bundle)
+        except Exception:
+            temporary.unlink(missing_ok=True)
+            raise
+        return {"uploaded": True, "size": length, "sha256": actual,
+                "name": self.ota_bundle.name}
+
+    def ota_command(self, action, limit=100, timeout=150):
+        if action not in {"status", "history", "stage"}:
+            raise ValueError("unsupported synchronous OTA action")
+        if not self.ota_manager.is_file():
+            raise RuntimeError("OTA manager is not installed")
+        command = ["/usr/bin/python3", str(self.ota_manager)]
+        if action == "history":
+            command.extend(["history", "--limit", str(max(1, min(int(limit), 500)))])
+        elif action == "stage":
+            if not self.ota_bundle.is_file():
+                raise RuntimeError("no OTA bundle has been uploaded")
+            command.extend(["stage", str(self.ota_bundle)])
+        else:
+            command.append("status")
+        code, output = run(command, timeout=timeout)
+        if code:
+            try:
+                message = json.loads(output).get("error", output)
+            except ValueError:
+                message = output
+            raise RuntimeError(message or "OTA command failed")
+        try:
+            return json.loads(output)
+        except ValueError:
+            raise RuntimeError("OTA manager returned invalid JSON")
+
+    def start_ota_action(self, action):
+        if action not in {"apply", "rollback"}:
+            raise ValueError("unsupported OTA action")
+        if not self.ota_manager.is_file():
+            raise RuntimeError("OTA manager is not installed")
+        self.ota_log.parent.mkdir(parents=True, exist_ok=True)
+        log_handle = self.ota_log.open("ab", buffering=0)
+        try:
+            process = subprocess.Popen(
+                ["/usr/bin/python3", str(self.ota_manager), "--delay", "2", action],
+                stdin=subprocess.DEVNULL, stdout=log_handle, stderr=subprocess.STDOUT,
+                start_new_session=True, close_fds=True)
+        finally:
+            log_handle.close()
+        return {"accepted": True, "action": action, "pid": process.pid,
+                "status_endpoint": "/api/ota/status"}
+
 
 class ApiHandler(BaseHTTPRequestHandler):
     server_version = "RV1126Web/1.0"
@@ -675,36 +830,59 @@ class ApiHandler(BaseHTTPRequestHandler):
     def state(self):
         return self.server.state
 
+    @property
+    def client_ip(self):
+        peer = self.client_address[0]
+        forwarded = self.headers.get("X-Real-IP", "").strip()
+        if peer in ("127.0.0.1", "::1") and forwarded:
+            try:
+                return str(ipaddress.ip_address(forwarded))
+            except ValueError:
+                pass
+        return peer
+
     def log_message(self, template, *args):
         print("{} {}".format(self.address_string(), template % args), flush=True)
 
-    def _headers(self, status, content_type, length=None, download=None):
+    def _headers(self, status, content_type, length=None, download=None, extra=None):
         self.send_response(status)
         self.send_header("Content-Type", content_type)
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("X-Frame-Options", "DENY")
         self.send_header("Referrer-Policy", "no-referrer")
         self.send_header("Cache-Control", "no-store")
+        self.send_header("Strict-Transport-Security", "max-age=31536000")
         self.send_header("Content-Security-Policy", "default-src 'self'; style-src 'self'; script-src 'self'; img-src 'self' blob: data:; connect-src 'self'")
         if length is not None:
             self.send_header("Content-Length", str(length))
         if download:
             self.send_header("Content-Disposition", 'attachment; filename="{}"'.format(download.replace('"', '')))
+        for name, value in (extra or {}).items():
+            self.send_header(name, str(value))
         self.end_headers()
 
-    def json_response(self, status, payload):
+    def json_response(self, status, payload, extra=None):
         body = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
-        self._headers(status, "application/json; charset=utf-8", len(body))
+        self._headers(status, "application/json; charset=utf-8", len(body), extra=extra)
         self.wfile.write(body)
 
-    def error_response(self, status, message):
-        self.json_response(status, {"error": str(message)})
+    def error_response(self, status, message, extra=None):
+        self.json_response(status, {"error": str(message)}, extra=extra)
 
     def _authorized(self, path):
         if path == "/api/health":
             return True
-        if not self.state.authorized(self.headers.get("Authorization", "")):
-            self.error_response(HTTPStatus.UNAUTHORIZED, "authorization required")
+        authorized, retry_after, blocked = self.state.check_authorization(
+            self.headers.get("Authorization", ""), self.client_ip)
+        if not authorized:
+            self.state.audit("authentication", self.client_ip,
+                             "rate_limited" if blocked else "denied")
+            if blocked:
+                self.error_response(HTTPStatus.TOO_MANY_REQUESTS,
+                                    "too many authentication failures",
+                                    {"Retry-After": retry_after})
+            else:
+                self.error_response(HTTPStatus.UNAUTHORIZED, "authorization required")
             return False
         return True
 
@@ -764,6 +942,13 @@ class ApiHandler(BaseHTTPRequestHandler):
                 self.wfile.write(body)
             elif path == "/api/models":
                 self.json_response(HTTPStatus.OK, self.state.model_status())
+            elif path == "/api/security/status":
+                self.json_response(HTTPStatus.OK, self.state.security_status())
+            elif path == "/api/ota/status":
+                self.json_response(HTTPStatus.OK, self.state.ota_command("status"))
+            elif path == "/api/ota/history":
+                limit = min(500, max(1, int(query.get("limit", ["100"])[0])))
+                self.json_response(HTTPStatus.OK, self.state.ota_command("history", limit=limit))
             else:
                 self.error_response(HTTPStatus.NOT_FOUND, "unknown API")
         except (ValueError, RuntimeError, OSError, subprocess.TimeoutExpired) as error:
@@ -775,29 +960,62 @@ class ApiHandler(BaseHTTPRequestHandler):
         if not self._authorized(path):
             return
         try:
+            status = HTTPStatus.OK
             if path == "/api/config":
-                self.json_response(HTTPStatus.OK, self.state.save_config(self._json_body()))
+                result = self.state.save_config(self._json_body())
             elif path == "/api/restart":
                 output = self.state.run_controller("restart", timeout=90)
                 health = self.state.wait_controller_health()
-                self.json_response(HTTPStatus.OK, {"restarted": True, "output": output, "health": health})
+                result = {"restarted": True, "output": output, "health": health}
             elif path == "/api/model/upload":
                 query = urllib.parse.parse_qs(parsed.query)
                 kind = query.get("kind", [""])[0]
                 digest = query.get("sha256", [""])[0]
                 length = int(self.headers.get("Content-Length", "0"))
                 result = self.state.save_upload(kind, digest, self.rfile, length)
-                self.json_response(HTTPStatus.OK, result)
             elif path == "/api/model/activate":
                 payload = self._json_body()
                 if payload.get("confirm") is not True:
                     raise ValueError("model activation requires confirm=true")
-                self.json_response(HTTPStatus.OK, self.state.activate_model())
+                result = self.state.activate_model()
+            elif path == "/api/auth/token/rotate":
+                payload = self._json_body()
+                if payload.get("confirm") is not True:
+                    raise ValueError("token rotation requires confirm=true")
+                value = self.state.rotate_token()
+                result = {"rotated": True, "token": value}
+            elif path == "/api/auth/token/invalidate":
+                payload = self._json_body()
+                if payload.get("confirm") is not True:
+                    raise ValueError("token invalidation requires confirm=true")
+                self.state.audit(path, self.client_ip, "success")
+                self.state.invalidate_token()
+                self.json_response(HTTPStatus.OK, {"invalidated": True})
+                return
+            elif path == "/api/ota/upload":
+                query = urllib.parse.parse_qs(parsed.query)
+                digest = query.get("sha256", [""])[0]
+                length = int(self.headers.get("Content-Length", "0"))
+                result = self.state.save_ota_upload(digest, self.rfile, length)
+            elif path == "/api/ota/verify":
+                result = self.state.ota_command("stage")
+            elif path in {"/api/ota/apply", "/api/ota/rollback"}:
+                payload = self._json_body()
+                if payload.get("confirm") is not True:
+                    raise ValueError("OTA action requires confirm=true")
+                action = "apply" if path.endswith("/apply") else "rollback"
+                result = self.state.start_ota_action(action)
+                status = HTTPStatus.ACCEPTED
             else:
                 self.error_response(HTTPStatus.NOT_FOUND, "unknown API")
+                return
+            self.state.audit(path, self.client_ip, "success")
+            self.json_response(status, result)
         except json.JSONDecodeError:
+            self.state.audit(path, self.client_ip, "failure", "invalid JSON")
             self.error_response(HTTPStatus.BAD_REQUEST, "invalid JSON")
         except (ValueError, RuntimeError, OSError, subprocess.TimeoutExpired) as error:
+            self.state.audit(path, self.client_ip, "failure", error)
             self.error_response(HTTPStatus.BAD_REQUEST, error)
 
 
@@ -811,7 +1029,7 @@ class ManagementServer(ThreadingHTTPServer):
 
 def main():
     parser = argparse.ArgumentParser(description="RV1126 management service")
-    parser.add_argument("--bind", default="0.0.0.0")
+    parser.add_argument("--bind", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8080)
     parser.add_argument("--root", default="/root/rv1126_objects")
     parser.add_argument("--token-file", default="/root/rv1126_objects/web.token")

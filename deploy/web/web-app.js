@@ -111,9 +111,25 @@ async function sha256(file){return [...new Uint8Array(await crypto.subtle.digest
 $("#upload-model").onclick=async()=>{const files={rknn:$('#model-rknn').files[0],metadata:$('#model-metadata').files[0],labels:$('#model-labels').files[0]};if(Object.values(files).some(x=>!x))return toast('请选择完整的三个文件',true);try{for(const [kind,file] of Object.entries(files)){toast(`正在校验并上传 ${file.name}…`);await api(`/api/model/upload?kind=${kind}&sha256=${await sha256(file)}`,{method:'POST',headers:{'Content-Type':'application/octet-stream'},body:file})}toast('模型组上传与 SHA-256 校验完成');loadModels()}catch(e){toast(e.message,true)}};
 $("#activate-model").onclick=async()=>{if(!confirm('切换模型会重启媒体管线，是否继续？'))return;try{await api('/api/model/activate',{method:'POST',headers:{'Content-Type':'application/json'},body:'{"confirm":true}'});toast('模型已切换，管线健康检查通过');loadModels();refreshAll()}catch(e){toast(e.message,true)}};
 
-$$('.tab').forEach(b=>b.onclick=()=>{$$('.tab').forEach(x=>x.classList.remove('active'));$$('.tab-page').forEach(x=>x.classList.remove('active'));b.classList.add('active');$(`#${b.dataset.tab}`).classList.add('active');if(b.dataset.tab==='events'){loadEvents();loadFiles()}if(b.dataset.tab==='models')loadModels()});
+async function loadSecurity(){
+  try{
+    const [securityResponse,otaResponse,historyResponse]=await Promise.all([api('/api/security/status'),api('/api/ota/status'),api('/api/ota/history?limit=20')]);
+    const security=await securityResponse.json(),ota=await otaResponse.json(),history=await historyResponse.json();
+    $("#security-state").innerHTML=[["管理令牌",security.token_active?"有效":"已失效"],["HTTPS",security.https_required?"必需":"未强制"],["云端凭证",security.cloud_credential_provisioned?"已配置":"未配置"],["凭证隔离",security.cloud_credential_separate?"是":"否"]].map(x=>`<span>${x[0]}</span><strong>${x[1]}</strong>`).join('');
+    $("#ota-state").textContent=JSON.stringify({status:ota,history:history.history||[]},null,2);
+  }catch(e){toast(e.message,true)}
+}
+$("#rotate-token").onclick=async()=>{if(!confirm('轮换后旧令牌立即失效，是否继续？'))return;try{const r=await api('/api/auth/token/rotate',{method:'POST',headers:{'Content-Type':'application/json'},body:'{"confirm":true}'}),d=await r.json();token=d.token;sessionStorage.setItem('rv1126-token',token);toast('令牌已轮换，新令牌已保存在当前会话');loadSecurity()}catch(e){toast(e.message,true)}};
+$("#invalidate-token").onclick=async()=>{if(!confirm('失效后必须在板端执行 token-reset 才能重新登录，确认继续？'))return;try{await api('/api/auth/token/invalidate',{method:'POST',headers:{'Content-Type':'application/json'},body:'{"confirm":true}'});token='';sessionStorage.removeItem('rv1126-token');toast('管理令牌已失效');openToken()}catch(e){toast(e.message,true)}};
+$("#upload-ota").onclick=async()=>{const file=$("#ota-bundle").files[0];if(!file)return toast('请选择 .rvota 包',true);try{toast('正在计算SHA-256并上传…');const r=await api(`/api/ota/upload?sha256=${await sha256(file)}`,{method:'POST',headers:{'Content-Type':'application/octet-stream'},body:file});await r.json();toast('OTA包上传完成，请继续验签')}catch(e){toast(e.message,true)}};
+$("#verify-ota").onclick=async()=>{try{toast('正在验证签名、设备型号和文件摘要…');await api('/api/ota/verify',{method:'POST'});toast('OTA包验签通过并已写入备用版本');loadSecurity()}catch(e){toast(e.message,true)}};
+$("#apply-ota").onclick=async()=>{if(!confirm('切换期间Web和RTSP会短暂中断，失败将自动回滚。确认继续？'))return;try{await api('/api/ota/apply',{method:'POST',headers:{'Content-Type':'application/json'},body:'{"confirm":true}'});toast('已开始A/B切换，约60秒内恢复');setTimeout(()=>location.reload(),30000)}catch(e){toast(e.message,true)}};
+$("#rollback-ota").onclick=async()=>{if(!confirm('确认回滚到上一个已验证版本？'))return;try{await api('/api/ota/rollback',{method:'POST',headers:{'Content-Type':'application/json'},body:'{"confirm":true}'});toast('已开始回滚');setTimeout(()=>location.reload(),30000)}catch(e){toast(e.message,true)}};
+
+$$('.tab').forEach(b=>b.onclick=()=>{$$('.tab').forEach(x=>x.classList.remove('active'));$$('.tab-page').forEach(x=>x.classList.remove('active'));b.classList.add('active');$(`#${b.dataset.tab}`).classList.add('active');if(b.dataset.tab==='events'){loadEvents();loadFiles()}if(b.dataset.tab==='models')loadModels();if(b.dataset.tab==='security')loadSecurity()});
 $("#auth").onclick=openToken;$("#refresh").onclick=refreshAll;$("#reload-events").onclick=loadEvents;$("#file-kind").onchange=loadFiles;$("#reload-models").onclick=loadModels;
 $("#restart").onclick=async()=>{if(!confirm('确认重启媒体管线？RTSP 将短暂中断。'))return;try{await api('/api/restart',{method:'POST'});toast('管线重启和健康检查完成');setTimeout(refreshAll,2000)}catch(e){toast(e.message,true)}};
 $("#logs").onclick=()=>downloadAuthorized('/api/logs/export','rv1126-logs.tar.gz');
+$("#reload-security").onclick=loadSecurity;$("#reload-ota").onclick=loadSecurity;
 if(token)refreshAll();else openToken();
 setInterval(()=>{if(token&&!document.hidden)Promise.all([api('/api/status'),api('/api/metrics')]).then(async([s,m])=>{state.status=await s.json();state.metrics=await m.json();render()}).catch(()=>{})},5000);

@@ -38,6 +38,7 @@
       <button class="tab" data-tab="analytics">区域与越线</button>
       <button class="tab" data-tab="events">事件与文件</button>
       <button class="tab" data-tab="models">模型管理</button>
+      <button class="tab" data-tab="security">安全与 OTA</button>
     </nav>
 
     <section id="overview" class="tab-page active">
@@ -107,6 +108,35 @@
         </article>
         <article class="panel"><div class="section-title"><div><p class="eyebrow">MODEL STATE</p><h3>模型状态</h3></div><button id="reload-models" class="ghost">刷新</button></div><pre id="model-state">尚未读取</pre></article>
       </div>
+    </section>
+
+    <section id="security" class="tab-page">
+      <div class="grid two">
+        <article class="panel">
+          <div class="section-title"><div><p class="eyebrow">AUTHENTICATION</p><h3>设备认证</h3></div><button id="reload-security" class="ghost">刷新</button></div>
+          <div id="security-state" class="detail-list"></div>
+          <div class="form-actions">
+            <button id="rotate-token">轮换管理令牌</button>
+            <button id="invalidate-token" class="danger">使当前令牌失效</button>
+          </div>
+          <p class="notice">管理令牌仅用于本地 HTTPS 管理；云端设备凭证使用独立文件，不会通过此页面显示。</p>
+        </article>
+        <article class="panel">
+          <div class="section-title"><div><p class="eyebrow">SIGNED A/B UPDATE</p><h3>应用 OTA</h3></div><button id="reload-ota" class="ghost">刷新</button></div>
+          <label>签名升级包<input id="ota-bundle" type="file" accept=".rvota,application/gzip"></label>
+          <div class="form-actions">
+            <button id="upload-ota">上传</button>
+            <button id="verify-ota">验签并暂存</button>
+            <button id="apply-ota" class="danger">切换版本</button>
+            <button id="rollback-ota" class="ghost">回滚</button>
+          </div>
+          <p class="notice">仅接受匹配设备型号、通过 RSA-3072 签名且序号高于当前版本的完整包。切换后60秒健康检查失败会自动回滚。</p>
+        </article>
+      </div>
+      <article class="panel">
+        <div class="section-title"><div><p class="eyebrow">OTA STATE / HISTORY</p><h3>升级状态</h3></div></div>
+        <pre id="ota-state">尚未读取</pre>
+      </article>
     </section>
   </main>
 

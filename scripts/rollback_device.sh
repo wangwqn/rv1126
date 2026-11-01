@@ -11,6 +11,12 @@ if [[ "$(adb get-state 2>/dev/null || true)" != device ]]; then
   exit 1
 fi
 
+if adb shell 'test -L /root/rv1126_objects' >/dev/null 2>&1; then
+  echo "A/B layout detected; using the signed OTA rollback engine."
+  adb shell '/usr/bin/python3 /root/rv1126_ota/rv1126_ota.py rollback'
+  exit $?
+fi
+
 manifest=$(adb shell "cat '$previous_manifest'" 2>/dev/null | tr -d '\r')
 if [[ -z "$manifest" ]]; then
   echo "No verified previous deployment is available" >&2

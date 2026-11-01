@@ -15,6 +15,12 @@ project_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 release_dir="$project_dir/release/rv1126"
 source "$project_dir/scripts/lib/atomic_adb_deploy.sh"
 
+if adb shell 'test -L /root/rv1126_objects' >/dev/null 2>&1; then
+  echo "Refusing an in-place ADB deployment after A/B OTA bootstrap." >&2
+  echo "Build a signed .rvota package and use the OTA verify/apply workflow." >&2
+  exit 1
+fi
+
 (
   cd "$release_dir"
   sha256sum -c SHA256SUMS

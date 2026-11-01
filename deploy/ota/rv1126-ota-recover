@@ -1,0 +1,11 @@
+#!/bin/sh
+set -eu
+
+OTA=/root/rv1126_ota/rv1126_ota.py
+LOG=/tmp/rv1126-ota-recover.log
+
+[ -x "$OTA" ] || exit 0
+/usr/bin/python3 "$OTA" recover >"$LOG" 2>&1 || {
+    echo "RV1126 OTA recovery failed; see $LOG" >&2
+    exit 1
+}

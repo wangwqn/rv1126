@@ -32,10 +32,11 @@ class WebApiTest(unittest.TestCase):
         self.thread.join(timeout=2)
         self.temporary.cleanup()
 
-    def request(self, path, method="GET", body=None, authorized=True, content_type="application/json"):
+    def request(self, path, method="GET", body=None, authorized=True,
+                content_type="application/json", token="test-token"):
         headers = {"Content-Type": content_type}
         if authorized:
-            headers["Authorization"] = "Bearer test-token"
+            headers["Authorization"] = "Bearer " + token
         request = urllib.request.Request(self.base + path, data=body, method=method, headers=headers)
         return urllib.request.urlopen(request, timeout=3)
 
@@ -124,6 +125,70 @@ class WebApiTest(unittest.TestCase):
         result = json.load(self.request("/api/restart", "POST", b"{}"))
         self.assertTrue(result["restarted"])
         self.assertEqual(actions, ["restart", "wait-health"])
+
+    def test_authentication_failures_are_rate_limited(self):
+        codes = []
+        for _ in range(5):
+            with self.assertRaises(urllib.error.HTTPError) as context:
+                self.request("/api/status", token="wrong-token")
+            codes.append(context.exception.code)
+        self.assertEqual(codes[:4], [401, 401, 401, 401])
+        self.assertEqual(codes[4], 429)
+
+    def test_token_rotation_invalidates_old_token_and_is_audited(self):
+        response = self.request(
+            "/api/auth/token/rotate", "POST", b'{"confirm":true}')
+        result = json.load(response)
+        self.assertTrue(result["rotated"])
+        self.assertEqual(len(result["token"]), 64)
+        with self.assertRaises(urllib.error.HTTPError) as context:
+            self.request("/api/status")
+        self.assertEqual(context.exception.code, 401)
+        status = json.load(self.request("/api/security/status", token=result["token"]))
+        self.assertTrue(status["token_active"])
+        audit = self.state.audit_file.read_text(encoding="utf-8")
+        self.assertIn("/api/auth/token/rotate", audit)
+
+    def test_token_can_be_invalidated(self):
+        result = json.load(self.request(
+            "/api/auth/token/invalidate", "POST", b'{"confirm":true}'))
+        self.assertTrue(result["invalidated"])
+        self.assertEqual(self.state.token(), "")
+
+    def test_ota_upload_requires_and_verifies_sha256(self):
+        self.state.ota_bundle = self.root / "update.rvota"
+        content = b"signed ota placeholder"
+        digest = hashlib.sha256(content).hexdigest()
+        result = json.load(self.request(
+            "/api/ota/upload?sha256=" + digest, "POST", content,
+            content_type="application/octet-stream"))
+        self.assertTrue(result["uploaded"])
+        self.assertEqual(self.state.ota_bundle.read_bytes(), content)
+        with self.assertRaises(urllib.error.HTTPError) as context:
+            self.request("/api/ota/upload?sha256=" + "0" * 64, "POST", content,
+                         content_type="application/octet-stream")
+        self.assertEqual(context.exception.code, 400)
+
+    def test_ota_api_routes_only_fixed_actions(self):
+        calls = []
+
+        def ota_command(action, limit=100, timeout=150):
+            calls.append(action)
+            return {"action": action}
+
+        def start_action(action):
+            calls.append(action)
+            return {"accepted": True, "action": action}
+
+        self.state.ota_command = ota_command
+        self.state.start_ota_action = start_action
+        self.assertEqual(json.load(self.request("/api/ota/status"))["action"], "status")
+        self.assertEqual(json.load(self.request(
+            "/api/ota/verify", "POST", b""))["action"], "stage")
+        accepted = json.load(self.request(
+            "/api/ota/apply", "POST", b'{"confirm":true}'))
+        self.assertTrue(accepted["accepted"])
+        self.assertEqual(calls, ["status", "stage", "apply"])
 
 
 if __name__ == "__main__":

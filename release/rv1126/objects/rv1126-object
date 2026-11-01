@@ -526,8 +526,7 @@ case "$command" in
         exec "$APP" "$@"
         ;;
     install-autostart)
-        script=$(readlink -f "$0")
-        ln -sfn "$script" /etc/init.d/S99rv1126-object
+        ln -sfn "$APP_DIR/rv1126-object" /etc/init.d/S99rv1126-object
         echo "Installed boot service: /etc/init.d/S99rv1126-object"
         ;;
     remove-autostart)

@@ -32,7 +32,7 @@ cd release/rv1126
 sha256sum -c SHA256SUMS
 ```
 
-## 部署物体检测
+## 首次部署物体检测
 
 ```bash
 bash scripts/deploy_release.sh --restart
@@ -43,20 +43,20 @@ adb shell '/root/rv1126_objects/rv1126-web start'
 adb shell '/root/rv1126_objects/rv1126-web token'
 ```
 
-同一 Wi-Fi 下访问 `http://开发板IP:8080/`，使用 `rv1126-web token`
-输出的 Bearer Token 登录。Web 服务仅依赖板端 Python 3 标准库，不修改
-nginx，也不进入 DMA-BUF/编码/RTSP 数据路径。端口默认为 TCP 8080；
-可用 `RV1126_WEB_PORT` 和 `RV1126_WEB_BIND` 覆盖。
+上述ADB命令仅用于尚未迁移A/B布局的首次安装。产品模式必须按
+`handoff/SECURE_OTA.md` 配置离线签名公钥、A/B目录和Nginx HTTPS。
+完成后同一Wi-Fi下访问 `https://开发板IP/`，使用
+`rv1126-web token` 输出的Bearer Token登录。Python仅监听
+`127.0.0.1:8080`，对外HTTPS由Nginx提供；Web不进入DMA-BUF/编码/RTSP数据路径。
 
 界面支持主/子码率、GOP、AI FPS、置信度、OSD TTL/数量与客户端
 缓冲配置。勾选“立即应用”会中断 RTSP 并重启管线；若健康检查
 失败，服务会恢复旧配置并尝试重启。区域/越线当前仅保存坐标，
 跟踪和规则事件引擎是后续扩展。
 
-部署使用隐藏暂存目录：全部文件上传后先在板端执行 SHA256 校验，通过后
-才用同文件系统的 `rename` 替换正式文件，因此中断上传不会把主程序
-截断为空文件。同名旧文件保留为 `.previous` 硬链接，且主可执行文件最后替换。
-已运行进程不会被部署脚本中断；执行 `rv1126-object restart` 后才切换到新 inode。
+完成A/B迁移后，`deploy_release.sh` 会拒绝原地覆盖。后续发布必须使用
+RSA-3072/SHA-256签名 `.rvota` 包：先完整写入备用目录并复核摘要，
+再原子切换 `/root/rv1126_objects` 软链接；60秒健康门禁失败会自动回滚。
 
 其他管理命令：
 

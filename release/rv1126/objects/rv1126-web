@@ -6,7 +6,7 @@ SERVER="$APP_DIR/rv1126-web.py"
 PID_FILE=${RV1126_WEB_PID_FILE:-/var/run/rv1126-web.pid}
 LOG_FILE=${RV1126_WEB_LOG_FILE:-/tmp/rv1126-web.log}
 TOKEN_FILE=${RV1126_WEB_TOKEN_FILE:-$APP_DIR/web.token}
-BIND=${RV1126_WEB_BIND:-0.0.0.0}
+BIND=${RV1126_WEB_BIND:-127.0.0.1}
 PORT=${RV1126_WEB_PORT:-8080}
 CONTROLLER=$(readlink -f "$0")
 
@@ -99,9 +99,15 @@ case "$command" in
     status) status_service ;;
     health) health_service ;;
     token) ensure_token; cat "$TOKEN_FILE" ;;
+    token-reset)
+        rm -f "$TOKEN_FILE"
+        ensure_token
+        echo "Management token rotated locally"
+        cat "$TOKEN_FILE"
+        ;;
     log) tail -100 "$LOG_FILE" 2>/dev/null || true ;;
     install-autostart)
-        ln -sfn "$CONTROLLER" /etc/init.d/S98rv1126-web
+        ln -sfn "$APP_DIR/rv1126-web" /etc/init.d/S98rv1126-web
         echo "Installed boot service: /etc/init.d/S98rv1126-web"
         ;;
     remove-autostart)
@@ -109,7 +115,7 @@ case "$command" in
         echo "Removed boot service"
         ;;
     *)
-        echo "Usage: $0 {start|stop|restart|status|health|token|log|install-autostart|remove-autostart}" >&2
+        echo "Usage: $0 {start|stop|restart|status|health|token|token-reset|log|install-autostart|remove-autostart}" >&2
         exit 2
         ;;
 esac
