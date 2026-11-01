@@ -1,20 +1,42 @@
 # 实测状态（2026-11-02）
 
-## 1.12.1 DMA审计真机数据修正候选
+## 1.12.1 DMA审计真机通过
 
+- 已通过HTTPS签名OTA部署到真机，升级序号为 `1012001`；A/B健康门禁通过，
+  当前目录为 `/root/rv1126_releases/v1.12.1`，上一版本为 `v1.12.0`。
+  发布提交为 `7080c54e22074cdff4684ed85e308f4b67927a74`，OTA包SHA-256为
+  `cf30c684229379d6aa3748d49898524cb41d9f48af13bbb4e3de344a58321e7d`。
 - 1.12.0真机首批数据确认主/子NV12路径CPU映射为0，cache-sync、
-  MEDIA_BUFFER释放与PTS均无错误。
-- 发现VENC压缩包预期无DMA FD被误报为原始图像错误，已拆分为
-  `missing`和 `required_error`。
-- 发现AI局部变量额外持有BGR DMA-BUF约200 ms，已改为推理返回后立即释放。
-- 待完成签名OTA真机部署与修正后数据对比。
+  `MEDIA_BUFFER`释放与PTS均无错误。VENC压缩包在该旧BSP上预期无DMA FD，
+  1.12.1已将其记为 `missing`，仅把原始RGA图像缺少DMA FD记为
+  `required_error`，避免把正常压缩输出误判成零拷贝失败。
+- 推理返回后立即释放AI BGR `MEDIA_BUFFER`，持有时延由1.12.0的
+  P50约199.7 ms降至18.2 ms，P95约22.2 ms、P99约24.1 ms、最大约32.9 ms；
+  AI缓冲峰值由2降至1。AI取帧等待按采样帧率计算后，RGA正常低帧率输入
+  不再产生100 ms超时日志。
+- Wi-Fi TCP主/子RTSP客户端同时解码8秒均正常退出；连接客户端后累计
+  `encoded` CPU映射增加557次，而 `nv12` CPU映射仍为0，证明应用只映射
+  编码包发送，没有把主/子NV12帧隐式映射到CPU。
+- 30秒漂移采集共30个样本：进程DMA FD为77到76、DMA字节为
+  89567232到86433792、RSS为241276 KiB到236220 KiB，无持续增长，
+  `WARNING=buffer_lifecycle`为0。最新累计值为 `live=0`、
+  `overdue=0`、`required_error=0`、`release_error=0`、`sync_error=0`；
+  进程DMA FD 76个/86433792字节，内核全局91个/180633600字节。
+- Web `/api/metrics`已真机验证可读取生命周期、CPU映射和进程/内核DMA统计。
+  旧RKMedia不公开各硬件缓冲池的实时精确占用率，因此项目明确报告
+  `exact_occupancy=not_exposed_by_RKMedia`，并用应用租约、进程DMA FD和
+  内核全局DMA对象三层指标监控，不伪造池占用数据。
+- 当前健康检查通过：双VENC约93/94帧每3秒，AI、OSD、音频、TNR、
+  RTSP和看门狗均开启，`ErrCnt=0`、重启次数0。30秒属于功能冒烟验收；
+  30分钟和24小时DMA泄漏结论仍需分别运行对应时长采集后才能确认。
 
-## 1.12.0 DMA-BUF零拷贝审计候选
+## 1.12.0 DMA-BUF零拷贝审计基线
 
 - 已完成 `MEDIA_BUFFER` RAII生命周期、DMA FD、CPU cache-sync映射、
   进程/内核DMA-BUF与获取/持有时延监控。
 - 主机 `core_tests`、`decode_tests`、`dma_audit_tests` 3/3通过，ARM交叉编译通过。
-- 待完成签名OTA真机部署和稳态DMA-BUF数据验收。
+- 已完成签名OTA真机部署，并由1.12.1基于首批板载数据修正VENC无FD假阳性
+  与AI BGR缓冲额外持有问题。
 
 ## 1.11.1 回滚安全边界修正
 
