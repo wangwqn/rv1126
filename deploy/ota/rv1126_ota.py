@@ -273,7 +273,9 @@ class OTAManager:
         if bundle.stat().st_size > MAX_BUNDLE_BYTES:
             raise OTAError("OTA bundle is too large")
         try:
-            archive = tarfile.open(str(bundle), "r:gz")
+            # The production Buildroot Python omits zlib. Keep the signed
+            # container uncompressed so verification needs no optional module.
+            archive = tarfile.open(str(bundle), "r:")
         except (tarfile.TarError, OSError) as error:
             raise OTAError("invalid OTA archive: {}".format(error))
         with archive:
@@ -362,7 +364,7 @@ class OTAManager:
             temporary = Path(tempfile.mkdtemp(prefix=".stage-v{}-".format(version),
                                               dir=str(self.releases)))
             try:
-                with tarfile.open(str(bundle), "r:gz") as archive:
+                with tarfile.open(str(bundle), "r:") as archive:
                     for entry in manifest["files"]:
                         relative = entry["path"]
                         target = temporary / relative
@@ -381,7 +383,7 @@ class OTAManager:
                             raise OTAError("OTA payload digest mismatch: " + relative)
                         os.chmod(target, int(entry["mode"]))
                 atomic_json(temporary / "OTA_MANIFEST.json", manifest, 0o644)
-                with tarfile.open(str(bundle), "r:gz") as archive:
+                with tarfile.open(str(bundle), "r:") as archive:
                     signature_data = archive.extractfile("manifest.sig").read()
                 atomic_write(temporary / "OTA_MANIFEST.sig", signature_data, 0o644)
                 self._link_persistent_state(temporary)

@@ -122,7 +122,9 @@ def main():
 
         output.parent.mkdir(parents=True, exist_ok=True)
         partial = output.with_suffix(output.suffix + ".new")
-        with tarfile.open(str(partial), "w:gz") as archive:
+        # RV1126 Buildroot Python has no zlib module. The payload is already
+        # compact (quantized RKNN/binaries), so use an uncompressed signed tar.
+        with tarfile.open(str(partial), "w:") as archive:
             archive.add(manifest_path, arcname="manifest.json", recursive=False)
             archive.add(temporary / "manifest.sig", arcname="manifest.sig", recursive=False)
             for entry in entries:

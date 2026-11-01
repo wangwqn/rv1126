@@ -108,7 +108,7 @@ class OTATest(unittest.TestCase):
         (work / "manifest.sig").write_bytes(base64.b64encode(signature.read_bytes()))
         if mutate_after_sign:
             (payload / "VERSION").write_text("9.9.9\n", encoding="utf-8")
-        with tarfile.open(bundle, "w:gz") as archive:
+        with tarfile.open(bundle, "w:") as archive:
             archive.add(manifest_path, arcname="manifest.json")
             archive.add(work / "manifest.sig", arcname="manifest.sig")
             for entry in entries:
