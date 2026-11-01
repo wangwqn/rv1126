@@ -118,12 +118,16 @@ std::vector<NalRange> annexb_nals(const std::uint8_t* data, std::size_t size) {
 
 class CpuEncodedRead {
 public:
-    explicit CpuEncodedRead(MEDIA_BUFFER buffer) : buffer_(buffer) {
+    CpuEncodedRead(MEDIA_BUFFER buffer, std::uint64_t audit_id,
+                   std::size_t bytes)
+        : buffer_(buffer) {
         check_rk(RK_MPI_MB_BeginCPUAccess(buffer_, RK_TRUE),
                  "encoded MB BeginCPUAccess");
+        dma_audit().cpu_begin(audit_id, CpuAccessKind::encoded, bytes);
     }
     ~CpuEncodedRead() {
         const int status = RK_MPI_MB_EndCPUAccess(buffer_, RK_TRUE);
+        dma_audit().cpu_end(status != 0);
         if (status)
             std::fprintf(stderr, "rtsp: encoded MB EndCPUAccess failed (%d)\n",
                          status);
@@ -825,7 +829,7 @@ private:
             try {
                 const std::size_t size = RK_MPI_MB_GetSize(event.frame->get());
                 if (!size) continue;
-                CpuEncodedRead access(event.frame->get());
+                CpuEncodedRead access(event.frame->get(), event.frame->audit_id(), size);
                 const auto* data = static_cast<const std::uint8_t*>(
                     RK_MPI_MB_GetPtr(event.frame->get()));
                 if (!data) continue;

@@ -2,6 +2,7 @@
 
 #include "vision/config.hpp"
 #include "vision/core.hpp"
+#include "vision/dma_audit.hpp"
 #include "rkmedia_api.h"
 #include "objects.hpp"
 #include <atomic>
@@ -27,14 +28,16 @@ public:
 // Own the SDK handle, not just its borrowed DMA fd or mapping.
 class MediaBuffer : Noncopyable {
 public:
-    explicit MediaBuffer(MEDIA_BUFFER buffer);
+    MediaBuffer(MEDIA_BUFFER buffer, DmaRoute route, std::uint64_t wait_us);
     ~MediaBuffer();
     MEDIA_BUFFER get() const { return buffer_; }
+    std::uint64_t audit_id() const { return audit_id_; }
     int fd() const;
     uint64_t pts() const;
     MB_IMAGE_INFO_S image_info() const;
 private:
     MEDIA_BUFFER buffer_;
+    std::uint64_t audit_id_ = 0;
 };
 using Frame = std::shared_ptr<MediaBuffer>;
 Frame get_buffer(MOD_ID_E module, int channel, int timeout_ms);

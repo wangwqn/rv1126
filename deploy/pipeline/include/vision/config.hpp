@@ -53,6 +53,9 @@ struct Config {
     bool ai = true, osd = true;
     // Opt-in because percentile collection adds a small mutex/copy overhead.
     bool latency_stats = false;
+    // Audit MEDIA_BUFFER leases, DMA-BUF FDs, explicit CPU cache-sync regions
+    // and kernel/process DMA-BUF totals. It also enables latency percentiles.
+    bool dma_audit = false;
     // Optional per-sample trace. A dedicated writer thread drains a bounded
     // queue so storage latency never blocks a video or inference thread.
     std::string latency_csv;
@@ -125,6 +128,11 @@ inline Config parse_config(int argc, char** argv) {
         if (key == "--no-audio") { c.audio = false; continue; }
         if (key == "--no-isp") { c.iq_dir.clear(); continue; }
         if (key == "--latency-stats") { c.latency_stats = true; continue; }
+        if (key == "--dma-audit") {
+            c.dma_audit = true;
+            c.latency_stats = true;
+            continue;
+        }
         if (i + 1 == argc) throw std::invalid_argument("missing value: " + key);
         const std::string value = argv[++i];
         if (key == "--main-node") c.main_node = value;
@@ -191,6 +199,7 @@ inline void print_usage(std::ostream& out) {
            "  --result-ttl-ms 500 --stall-timeout-ms 5000\n"
            "  --iq-dir /etc/iqfiles\n"
            "  --latency-stats (rolling P50/P95/P99/max stage latency)\n"
+           "  --dma-audit (DMA-BUF leases/FDs, CPU mappings and wait percentiles)\n"
            "  --latency-csv /tmp/latency.csv (asynchronous per-sample trace)\n"
            "  --no-ai --no-osd --no-audio --no-isp --ai-delay-ms 0 --help\n"
            "NV12 dimensions must be even; nodes must share the same FOV.\n"

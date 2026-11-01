@@ -14,7 +14,7 @@
 ```bash
 git clone git@github.com:wangwqn/rv1126.git
 cd rv1126
-git checkout v1.11.1
+git checkout v1.12.0
 bash scripts/verify_checkout.sh
 ```
 
@@ -201,6 +201,11 @@ cmake -S deploy/pipeline -B deploy/pipeline/build-rv1126-sdk -G Ninja \
 cmake --build deploy/pipeline/build-rv1126-sdk -j2
 bash scripts/push_device.sh
 ```
+
+DMA-BUF零拷贝审计使用 `--dma-audit`，并可执行
+`bash scripts/capture_dmabuf_audit.sh 1800` 采集进程/内核DMA-BUF、RSS、FD漂移和
+P50/P95/P99。指标语义和旧RKMedia的精确池占用限制见
+`deploy/pipeline/docs/dma-buffer-audit.md`。
 
 工具链默认 SDK 在 `/home/alientek/rv1126_sdk`。上传目标为 `/root/rv1126_objects/`。
 上传脚本不停止现有服务、不改系统运行库、不默认设置开机启动。文件先上传到

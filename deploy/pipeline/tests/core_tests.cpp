@@ -95,6 +95,9 @@ void test_config_parsing_and_validation() {
     const auto full_fov = parse({"--sensor-mode", "4k-ispp-1080"});
     check(full_fov.sensor_mode == "4k-ispp-1080",
           "full-FOV ISP-to-ISPP mode is accepted");
+    const auto audited = parse({"--dma-audit"});
+    check(audited.dma_audit && audited.latency_stats,
+          "DMA audit enables buffer and latency monitoring together");
     check(!configured.ai && !configured.osd && !configured.audio && configured.iq_dir.empty() &&
               configured.latency_stats && configured.latency_csv == "/tmp/latency.csv",
           "boolean disable switches are parsed");

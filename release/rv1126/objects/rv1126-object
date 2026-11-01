@@ -93,16 +93,22 @@ set_default_args() {
         --bitrate 4000000 --sub-bitrate 600000 \
         --pool-buffers 8 --packet-queue 8 \
         --rotation 270 --threshold 0.25 --result-ttl-ms 500 \
-        --audio-device plughw:0,0 --audio-source main --audio-period-ms 20
+        --audio-device plughw:0,0 --audio-source main --audio-period-ms 20 \
+        --dma-audit
     printf '%s\n' "$@"
 }
 
 load_runtime_args() {
     [ -s "$RUNTIME_ARGS_FILE" ] || return 1
+    dma_audit=0
     while IFS= read -r arg || [ -n "$arg" ]; do
-        [ -z "$arg" ] || set -- "$@" "$arg"
+        [ -z "$arg" ] || {
+            [ "$arg" != --dma-audit ] || dma_audit=1
+            set -- "$@" "$arg"
+        }
     done <"$RUNTIME_ARGS_FILE"
     [ "$#" -gt 0 ] || return 1
+    [ "$dma_audit" -eq 1 ] || set -- "$@" --dma-audit
     printf '%s\n' "$@"
 }
 

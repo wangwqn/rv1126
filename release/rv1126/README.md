@@ -110,6 +110,12 @@ AI专用RGA通道在输入端使用RKMedia帧率控制，只将默认3 FPS送入
 主/子编码输出和 RTSP 发送路径的滚动 P50/P95/P99/max；正常运行默认关闭。
 完整指标边界和抓取脚本见 `deploy/pipeline/docs/runtime-latency.md`。
 
+1.12.0默认追加 `--dma-audit`，每5秒报告 `MEDIA_BUFFER` 获取/释放平衡、
+DMA FD、逾期持有、CPU cache-sync映射、进程/内核DMA-BUF以及获取和持有
+P50/P95/P99。主/子NV12零拷贝的关键判定是 `cpu(nv12=0)`且无
+`WARNING=buffer_lifecycle`。详细边界见 `deploy/pipeline/docs/dma-buffer-audit.md`，
+长时采集使用 `bash scripts/capture_dmabuf_audit.sh 1800`。
+
 保存逐样本数据时使用 `--latency-csv /tmp/latency.csv`。CSV 由独立线程异步写入；
 推荐从 Ubuntu 执行 `bash scripts/capture_runtime_latency.sh 60`，自动拉取 CSV、
 检查是否丢诊断记录，并生成全量百分位表和 SVG 图。

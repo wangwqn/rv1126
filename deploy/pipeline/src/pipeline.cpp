@@ -86,7 +86,8 @@ public:
         : config_(std::move(config)), ai_frames_(1),
           encoded_packets_(static_cast<std::size_t>(config_.packet_queue)),
           audio_packets_(16) {
-        if (!config_.latency_csv.empty()) config_.latency_stats = true;
+        if (!config_.latency_csv.empty() || config_.dma_audit)
+            config_.latency_stats = true;
         config_.validate();
     }
 
@@ -97,6 +98,7 @@ public:
         if (started_) throw std::logic_error("Pipeline::start may only be called once");
         started_ = true;
         try {
+            dma_audit().enable(config_.dma_audit);
             if (!config_.latency_csv.empty())
                 latency_csv_.reset(new AsyncLatencyCsv(config_.latency_csv));
             rtsp_.reset(new RtspServer(
@@ -284,6 +286,65 @@ public:
                     << ", error=" << (latency_csv_->failed() ? 1 : 0)
                     << ", path=" << latency_csv_->path() << ')';
             }
+        }
+        if (config_.dma_audit) {
+            const DmaAuditSnapshot audit = dma_audit().snapshot();
+            out << "\ndma_buf handles(live=" << audit.live_handles
+                << ", peak=" << audit.peak_handles
+                << ", acquired=" << audit.acquired
+                << ", released=" << audit.released
+                << ", overdue=" << audit.overdue_handles
+                << ", max_live_ms=" << std::fixed << std::setprecision(2)
+                << audit.max_live_hold_us / 1000.0
+                << ") fd(live=" << audit.live_fds
+                << ", peak=" << audit.peak_fds
+                << ", invalid=" << audit.invalid_fds
+                << ", release_error=" << audit.release_errors << ")"
+                << " cpu(map=" << audit.cpu_accesses
+                << ", active=" << audit.cpu_active
+                << ", peak=" << audit.cpu_peak
+                << ", bytes=" << audit.cpu_bytes
+                << ", nv12="
+                << audit.cpu_kind[static_cast<std::size_t>(CpuAccessKind::nv12)]
+                << ", bgr="
+                << audit.cpu_kind[static_cast<std::size_t>(CpuAccessKind::bgr)]
+                << ", encoded="
+                << audit.cpu_kind[static_cast<std::size_t>(CpuAccessKind::encoded)]
+                << ", sync_error=" << audit.cpu_sync_errors << ')';
+            if (audit.kernel.process_available)
+                out << " process_dma(fds=" << audit.kernel.process_fds
+                    << ", bytes=" << audit.kernel.process_bytes << ')';
+            else
+                out << " process_dma=unavailable";
+            if (audit.kernel.global_available)
+                out << " kernel_dma(objects=" << audit.kernel.global_objects
+                    << ", bytes=" << audit.kernel.global_bytes << ')';
+            else
+                out << " kernel_dma=unavailable";
+            if (audit.overdue_handles || audit.invalid_fds ||
+                audit.release_errors || audit.cpu_sync_errors)
+                out << " WARNING=buffer_lifecycle";
+
+            out << "\ndma_wait_ms p50/p95/p99/max";
+            for (std::size_t index = 0; index < audit.routes.size(); ++index) {
+                const auto route = static_cast<DmaRoute>(index);
+                const auto& value = audit.routes[index];
+                out << ' ' << dma_route_name(route) << '('
+                    << format_latency("get", value.get_wait) << ' '
+                    << format_latency("hold", value.hold)
+                    << " live=" << value.live
+                    << " peak=" << value.peak
+                    << " timeout=" << value.timeouts << ')';
+            }
+            out << "\ndma_graph main=VI_NV12_DMABUF->RGA0_NV12(stride="
+                << config_.width << 'x' << config_.height
+                << ")->VENC0 sub=VI_NV12_DMABUF->RGA1_NV12(stride="
+                << config_.sub_width << 'x' << config_.sub_height
+                << ")->VENC1 ai=VI_NV12_DMABUF->RGA2_BGR(stride="
+                << config_.sub_output_width() << 'x' << config_.sub_output_height()
+                << ")->CPU_SYNC->RKNN osd=CPU_BGRA_BITMAP->RGA0_REGION"
+                << " pool_config(each=" << config_.pool_buffers
+                << ", exact_occupancy=not_exposed_by_RKMedia)";
         }
         return out.str();
     }

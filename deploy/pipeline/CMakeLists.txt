@@ -30,6 +30,12 @@ if(BUILD_TESTING)
         "${PROJECT_SOURCE_DIR}/include")
     target_compile_options(decode_tests PRIVATE -Wall -Wextra -Wpedantic)
     add_test(NAME decode_tests COMMAND decode_tests)
+
+    add_executable(dma_audit_tests tests/dma_audit_tests.cpp src/dma_audit.cpp)
+    target_include_directories(dma_audit_tests PRIVATE "${PROJECT_SOURCE_DIR}/include")
+    target_compile_options(dma_audit_tests PRIVATE -Wall -Wextra -Wpedantic)
+    target_link_libraries(dma_audit_tests PRIVATE Threads::Threads)
+    add_test(NAME dma_audit_tests COMMAND dma_audit_tests)
 endif()
 
 if(NOT CMAKE_CONFIGURATION_TYPES AND NOT CMAKE_BUILD_TYPE)
@@ -122,6 +128,7 @@ endif()
 set(RK_VISION_DEVICE_SOURCES
     rkmedia_rockx_face_detection_rtsp.cpp
     src/pipeline.cpp
+    src/dma_audit.cpp
     src/rk_backend.cpp
     src/rtsp_server.cpp)
 foreach(source IN LISTS RK_VISION_DEVICE_SOURCES)

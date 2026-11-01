@@ -5,6 +5,7 @@
 #include <rk_aiq_user_api_sysctl.h>
 #endif
 #include <algorithm>
+#include <chrono>
 #include <cerrno>
 #include <climits>
 #include <cstdio>
@@ -80,10 +81,17 @@ void warn_rk(int status, const char* operation) noexcept {
 // Bracket CPU reads of DMA memory, even though the caller never copies pixels.
 class CpuRead : Noncopyable {
 public:
-    explicit CpuRead(MEDIA_BUFFER buffer) : buffer_(buffer) {
+    CpuRead(MEDIA_BUFFER buffer, std::uint64_t audit_id, std::size_t bytes,
+            CpuAccessKind kind)
+        : buffer_(buffer) {
         check_rk(RK_MPI_MB_BeginCPUAccess(buffer_, RK_TRUE), "MB BeginCPUAccess");
+        dma_audit().cpu_begin(audit_id, kind, bytes);
     }
-    ~CpuRead() { warn_rk(RK_MPI_MB_EndCPUAccess(buffer_, RK_TRUE), "MB EndCPUAccess"); }
+    ~CpuRead() {
+        const int status = RK_MPI_MB_EndCPUAccess(buffer_, RK_TRUE);
+        dma_audit().cpu_end(status != 0);
+        warn_rk(status, "MB EndCPUAccess");
+    }
 private:
     MEDIA_BUFFER buffer_;
 };
@@ -415,10 +423,18 @@ void check_rk(int status, const char* operation) {
     if (status) throw std::runtime_error(std::string(operation) + " failed (" + std::to_string(status) + ")");
 }
 
-MediaBuffer::MediaBuffer(MEDIA_BUFFER buffer) : buffer_(buffer) {
+MediaBuffer::MediaBuffer(MEDIA_BUFFER buffer, DmaRoute route,
+                         std::uint64_t wait_us)
+    : buffer_(buffer) {
     if (!buffer_) throw std::runtime_error("null MEDIA_BUFFER");
+    audit_id_ = dma_audit().acquire(route, RK_MPI_MB_GetFD(buffer_),
+                                    RK_MPI_MB_GetSize(buffer_), wait_us);
 }
-MediaBuffer::~MediaBuffer() { warn_rk(RK_MPI_MB_ReleaseBuffer(buffer_), "MB ReleaseBuffer"); }
+MediaBuffer::~MediaBuffer() {
+    const int status = RK_MPI_MB_ReleaseBuffer(buffer_);
+    dma_audit().release(audit_id_, status != 0);
+    warn_rk(status, "MB ReleaseBuffer");
+}
 int MediaBuffer::fd() const {
     const int fd = RK_MPI_MB_GetFD(buffer_);
     if (fd < 0) throw std::runtime_error("buffer is not backed by DMA memory");
@@ -432,14 +448,34 @@ MB_IMAGE_INFO_S MediaBuffer::image_info() const {
     return info;
 }
 namespace {
-Frame adopt(MEDIA_BUFFER mb) {
+Frame adopt(MEDIA_BUFFER mb, DmaRoute route, std::uint64_t wait_us) {
     if (!mb) return {};
-    try { return std::make_shared<MediaBuffer>(mb); }
+    try { return std::make_shared<MediaBuffer>(mb, route, wait_us); }
     catch (...) { RK_MPI_MB_ReleaseBuffer(mb); throw; }
+}
+
+DmaRoute buffer_route(MOD_ID_E module, int channel) {
+    if (module == RK_ID_RGA && channel == 2) return DmaRoute::ai_rga;
+    if (module == RK_ID_VENC && channel == 0) return DmaRoute::main_venc;
+    if (module == RK_ID_VENC && channel == 1) return DmaRoute::sub_venc;
+    return DmaRoute::other;
 }
 } // namespace
 Frame get_buffer(MOD_ID_E module, int channel, int timeout_ms) {
-    return adopt(RK_MPI_SYS_GetMediaBuffer(module, channel, timeout_ms));
+    const DmaRoute route = buffer_route(module, channel);
+    const bool audit = dma_audit().enabled();
+    const auto started = audit ? std::chrono::steady_clock::now()
+                               : std::chrono::steady_clock::time_point{};
+    MEDIA_BUFFER buffer = RK_MPI_SYS_GetMediaBuffer(module, channel, timeout_ms);
+    const std::uint64_t wait_us = audit
+        ? static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(
+              std::chrono::steady_clock::now() - started).count())
+        : 0;
+    if (!buffer) {
+        dma_audit().timeout(route, wait_us);
+        return {};
+    }
+    return adopt(buffer, route, wait_us);
 }
 MediaSystem::MediaSystem() { check_rk(RK_MPI_SYS_Init(), "SYS Init"); }
 // This RKMedia API has no SYS_Exit. Channel owners perform teardown.
@@ -769,7 +805,8 @@ Detection ObjectDetector::infer(const Frame& frame) {
         info.u32VerStride < info.u32Height ||
         RK_MPI_MB_GetSize(frame->get()) < size_t(info.u32HorStride) * info.u32VerStride * 3)
         throw std::runtime_error("Invalid RGB input format/stride");
-    CpuRead access(frame->get());
+    const std::size_t bytes = RK_MPI_MB_GetSize(frame->get());
+    CpuRead access(frame->get(), frame->audit_id(), bytes, CpuAccessKind::bgr);
     void* data = RK_MPI_MB_GetPtr(frame->get());
     if (!data) throw std::runtime_error("RKNN input mapping failed");
     cv::Mat image(info.u32Height, info.u32Width, CV_8UC3, data, size_t(info.u32HorStride) * 3);

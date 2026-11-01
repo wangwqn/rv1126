@@ -327,7 +327,7 @@ class ManagementState:
             "--result-ttl-ms", str(media["result_ttl_ms"]),
             "--rtsp-client-buffer-kb", str(media["rtsp_client_buffer_kb"]),
             "--audio-device", "plughw:0,0", "--audio-source", "main",
-            "--audio-period-ms", "20",
+            "--audio-period-ms", "20", "--dma-audit",
         ]
         return arguments + self._model_arguments()
 
@@ -525,6 +525,44 @@ class ManagementState:
             1 for item in lines if "backpressure recovery" in item)
         return result
 
+    @staticmethod
+    def _latest_dma(path=Path("/tmp/rv1126-object.log")):
+        try:
+            with path.open("rb") as handle:
+                handle.seek(max(0, path.stat().st_size - 256 * 1024))
+                lines = handle.read().decode("utf-8", "replace").splitlines()
+        except OSError:
+            return {}
+        summary = next((item for item in reversed(lines)
+                        if item.startswith("dma_buf ")), "")
+        wait = next((item for item in reversed(lines)
+                     if item.startswith("dma_wait_ms ")), "")
+        graph = next((item for item in reversed(lines)
+                      if item.startswith("dma_graph ")), "")
+        patterns = {
+            "dma_live_handles": r"handles\(live=(\d+)",
+            "dma_peak_handles": r"handles\(live=\d+, peak=(\d+)",
+            "dma_overdue_handles": r"overdue=(\d+)",
+            "dma_live_fds": r"fd\(live=(\d+)",
+            "dma_invalid_fds": r"invalid=(\d+)",
+            "dma_release_errors": r"release_error=(\d+)",
+            "dma_cpu_maps": r"cpu\(map=(\d+)",
+            "dma_nv12_cpu_maps": r"nv12=(\d+)",
+            "dma_bgr_cpu_maps": r"bgr=(\d+)",
+            "dma_encoded_cpu_maps": r"encoded=(\d+)",
+            "dma_sync_errors": r"sync_error=(\d+)",
+            "dma_process_fds": r"process_dma\(fds=(\d+)",
+            "dma_process_bytes": r"process_dma\(fds=\d+, bytes=(\d+)",
+            "dma_kernel_objects": r"kernel_dma\(objects=(\d+)",
+            "dma_kernel_bytes": r"kernel_dma\(objects=\d+, bytes=(\d+)",
+        }
+        result = {"dma_raw": summary, "dma_wait_raw": wait,
+                  "dma_graph_raw": graph}
+        for name, pattern in patterns.items():
+            match = re.search(pattern, summary)
+            result[name] = int(match.group(1)) if match else 0
+        return result
+
     def _addresses(self):
         code, output = run(["ip", "-4", "-o", "addr", "show"], timeout=3)
         addresses = []
@@ -566,6 +604,7 @@ class ManagementState:
         result.update(self._npu_metrics())
         result.update(self._temperatures())
         result.update(self._latest_video())
+        result.update(self._latest_dma())
         result["cpu_total_percent"] = self._cpu_percent(pid)
         result["errcnt"] = 0
         try:

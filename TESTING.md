@@ -37,7 +37,7 @@ curl --cacert "$CA_CERT" -fsS -H "Authorization: Bearer $TOKEN" "https://$BOARD_
   --private-key "$KEY_DIR/rv1126-ota-signing-private.pem" \
   --trusted-key "$KEY_DIR/<key-id>.json" \
   --min-version 1.10.1 \
-  --output /tmp/rv1126-v1.11.1.rvota
+  --output /tmp/rv1126-v1.12.0.rvota
 ```
 
 必须分别验证：正常签名包、改动1字节的包、错误设备型号、相同序号重放、
@@ -54,6 +54,15 @@ adb shell '/root/rv1126_objects/rv1126-web health'
 浏览器中再保存一次“不立即应用”配置和一组区域/越线，刷新后
 数据应仍存在。“立即应用”和“切换模型”会重启 RTSP，只在允许
 中断推流的验收时段执行。
+
+DMA-BUF运行时验收：
+
+```bash
+bash scripts/capture_dmabuf_audit.sh 1800
+```
+
+应满足：`nv12=0`、`invalid=0`、`release_error=0`、`sync_error=0`、
+`overdue=0`，无 `WARNING=buffer_lifecycle`，且进程DMA FD、DMA字节和RSS不持续增长。
 
 若程序已经运行，先测试播放，不要重复启动另一个摄像头程序。
 

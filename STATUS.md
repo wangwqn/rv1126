@@ -1,5 +1,12 @@
 # 实测状态（2026-11-02）
 
+## 1.12.0 DMA-BUF零拷贝审计候选
+
+- 已完成 `MEDIA_BUFFER` RAII生命周期、DMA FD、CPU cache-sync映射、
+  进程/内核DMA-BUF与获取/持有时延监控。
+- 主机 `core_tests`、`decode_tests`、`dma_audit_tests` 3/3通过，ARM交叉编译通过。
+- 待完成签名OTA真机部署和稳态DMA-BUF数据验收。
+
 ## 1.11.1 回滚安全边界修正
 
 - 将回环绑定政策放入不随A/B版本切换的OTA运行时，防止回滚到

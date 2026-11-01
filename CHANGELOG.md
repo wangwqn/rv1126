@@ -3,6 +3,21 @@
 本项目使用语义化版本号 `主版本.次版本.修订号`。每个公开版本都对应一个带注释的
 Git 标签，标签指向的提交可独立检出、校验、编译和部署。
 
+## 1.12.0 - 2026-11-02
+
+- 新增 `--dma-audit` 零拷贝审计：跟踪应用持有的 `MEDIA_BUFFER`
+  获取/释放平衡、DMA FD引用、持有时间、获取等待、超时、逾期和
+  SDK释放错误。
+- 分类统计 NV12、BGR 和编码码流的显式CPU映射，并监控
+  `BeginCPUAccess/EndCPUAccess` 缓存一致性范围；正常主/子流的
+  `nv12` CPU映射应始终为0。
+- 读取 `/proc/self/fdinfo` 和内核 `dma_buf/bufinfo`，报告进程DMA FD/字节与
+  全局DMA-BUF对象/字节；旧RKMedia未提供的精确池占用明确标记为
+  `not_exposed_by_RKMedia`。
+- 新增AI RGA输出、主/子VENC输出的获取等待与持有时间
+  P50/P95/P99/最大值，以及30分钟/24小时DMA-BUF漂移采集脚本。
+- Web `/api/metrics` 新增DMA生命周期、CPU映射、进程/内核DMA汇总字段。
+
 ## 1.11.1 - 2026-11-02
 
 - 将Web回环绑定从应用版本上移到稳定OTA运行时：S98始终经由

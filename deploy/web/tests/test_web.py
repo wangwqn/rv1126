@@ -95,6 +95,25 @@ class WebApiTest(unittest.TestCase):
         self.assertIn("npu_load_percent", metrics)
         self.assertIn("npu_frequency_mhz", metrics)
 
+    def test_dma_metrics_parse_latest_pipeline_audit(self):
+        log = self.root / "dma.log"
+        log.write_text(
+            "dma_buf handles(live=2, peak=8, acquired=100, released=98, "
+            "overdue=0, max_live_ms=3.00) fd(live=2, peak=8, invalid=0, "
+            "release_error=0) cpu(map=90, active=0, peak=1, bytes=4096, "
+            "nv12=0, bgr=10, encoded=80, sync_error=0) "
+            "process_dma(fds=49, bytes=123456) kernel_dma(objects=52, bytes=234567)\n"
+            "dma_wait_ms p50/p95/p99/max ai_rga2(get=1/2/3/4)\n"
+            "dma_graph main=VI_NV12_DMABUF->RGA0_NV12->VENC0\n",
+            encoding="utf-8")
+        metrics = self.state._latest_dma(log)
+        self.assertEqual(metrics["dma_live_handles"], 2)
+        self.assertEqual(metrics["dma_nv12_cpu_maps"], 0)
+        self.assertEqual(metrics["dma_bgr_cpu_maps"], 10)
+        self.assertEqual(metrics["dma_encoded_cpu_maps"], 80)
+        self.assertEqual(metrics["dma_process_fds"], 49)
+        self.assertEqual(metrics["dma_kernel_objects"], 52)
+
     def test_health_wait_retries_during_media_warmup(self):
         attempts = []
 
