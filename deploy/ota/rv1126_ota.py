@@ -405,9 +405,15 @@ class OTAManager:
 
     def _run_controller(self, name, action, timeout=45, check=True):
         controller = self.current / name
+        environment = os.environ.copy()
+        if name == "rv1126-web":
+            # Security policy belongs to the stable OTA runtime, not only to
+            # the selected release.  This also protects rollback to a legacy
+            # controller whose historical default was 0.0.0.0:8080.
+            environment["RV1126_WEB_BIND"] = "127.0.0.1"
         result = subprocess.run([str(controller), action], stdout=subprocess.PIPE,
                                 stderr=subprocess.STDOUT, text=True, timeout=timeout,
-                                check=False)
+                                check=False, env=environment)
         if check and result.returncode:
             raise OTAError("{} {} failed: {}".format(name, action, result.stdout.strip()))
         return result.stdout.strip()
@@ -418,15 +424,21 @@ class OTAManager:
         try:
             pid = int(path.read_text().strip())
         except (OSError, ValueError):
-            path.unlink(missing_ok=True)
+            # On a read-only /var/run, unlink(missing_ok=True) may still fail
+            # with EROFS even when the path is absent.  Avoid the syscall when
+            # there is nothing to remove.
+            if path.exists() or path.is_symlink():
+                path.unlink()
             return
         if pid <= 1 or not Path("/proc/{}".format(pid)).is_dir():
-            path.unlink(missing_ok=True)
+            if path.exists() or path.is_symlink():
+                path.unlink()
             return
         try:
             os.kill(pid, 15)
         except ProcessLookupError:
-            path.unlink(missing_ok=True)
+            if path.exists() or path.is_symlink():
+                path.unlink()
             return
         deadline = time.monotonic() + 10
         while Path("/proc/{}".format(pid)).is_dir() and time.monotonic() < deadline:
@@ -436,7 +448,8 @@ class OTAManager:
                 os.kill(pid, 9)
             except ProcessLookupError:
                 pass
-        path.unlink(missing_ok=True)
+        if path.exists() or path.is_symlink():
+            path.unlink()
 
     def _stop_services(self):
         # A malformed candidate may not contain executable controllers. Never
@@ -481,7 +494,7 @@ class OTAManager:
         for link, target in (("/etc/init.d/S97rv1126-ota-recover",
                               "/root/rv1126_ota/rv1126-ota-recover"),
                              ("/etc/init.d/S98rv1126-web",
-                              "/root/rv1126_objects/rv1126-web"),
+                              "/root/rv1126_ota/rv1126-web-secure"),
                              ("/etc/init.d/S99rv1126-object",
                               "/root/rv1126_objects/rv1126-object")):
             path = Path(link)

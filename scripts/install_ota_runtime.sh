@@ -16,10 +16,11 @@ key_id="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["key_i
 adb shell "mkdir -p /root/rv1126_ota /userdata/rv1126-ota/trusted_keys"
 adb push "$project_dir/deploy/ota/rv1126_ota.py" /root/rv1126_ota/rv1126_ota.py
 adb push "$project_dir/deploy/ota/rv1126-ota-recover" /root/rv1126_ota/rv1126-ota-recover
+adb push "$project_dir/deploy/ota/rv1126-web-secure" /root/rv1126_ota/rv1126-web-secure
 adb push "$trusted_key" "/userdata/rv1126-ota/trusted_keys/${key_id}.json"
 adb shell "
 set -e
-chmod 0755 /root/rv1126_ota/rv1126_ota.py /root/rv1126_ota/rv1126-ota-recover
+chmod 0755 /root/rv1126_ota/rv1126_ota.py /root/rv1126_ota/rv1126-ota-recover /root/rv1126_ota/rv1126-web-secure
 chmod 0644 '/userdata/rv1126-ota/trusted_keys/${key_id}.json'
 ln -sfn /root/rv1126_ota/rv1126-ota-recover /etc/init.d/S97rv1126-ota-recover
 /usr/bin/python3 /root/rv1126_ota/rv1126_ota.py bootstrap

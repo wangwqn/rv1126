@@ -107,7 +107,11 @@ case "$command" in
         ;;
     log) tail -100 "$LOG_FILE" 2>/dev/null || true ;;
     install-autostart)
-        ln -sfn "$APP_DIR/rv1126-web" /etc/init.d/S98rv1126-web
+        if [ -x /root/rv1126_ota/rv1126-web-secure ]; then
+            ln -sfn /root/rv1126_ota/rv1126-web-secure /etc/init.d/S98rv1126-web
+        else
+            ln -sfn "$APP_DIR/rv1126-web" /etc/init.d/S98rv1126-web
+        fi
         echo "Installed boot service: /etc/init.d/S98rv1126-web"
         ;;
     remove-autostart)

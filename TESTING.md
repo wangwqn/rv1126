@@ -37,7 +37,7 @@ curl --cacert "$CA_CERT" -fsS -H "Authorization: Bearer $TOKEN" "https://$BOARD_
   --private-key "$KEY_DIR/rv1126-ota-signing-private.pem" \
   --trusted-key "$KEY_DIR/<key-id>.json" \
   --min-version 1.10.1 \
-  --output /tmp/rv1126-v1.11.0.rvota
+  --output /tmp/rv1126-v1.11.1.rvota
 ```
 
 必须分别验证：正常签名包、改动1字节的包、错误设备型号、相同序号重放、

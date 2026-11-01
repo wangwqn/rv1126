@@ -13,9 +13,10 @@
 ## 目录
 
 ```text
-/root/rv1126_objects -> /root/rv1126_releases/v1.11.0
+/root/rv1126_objects -> /root/rv1126_releases/v1.11.1
 /root/rv1126_releases/v1.10.1
 /root/rv1126_releases/v1.11.0
+/root/rv1126_releases/v1.11.1
 /root/rv1126_ota/rv1126_ota.py
 /userdata/rv1126-ota/
   trusted_keys/
@@ -48,7 +49,7 @@
   --private-key "$KEY_DIR/rv1126-ota-signing-private.pem" \
   --trusted-key "$KEY_DIR/<key-id>.json" \
   --min-version 1.10.1 \
-  --output /tmp/rv1126-v1.11.0.rvota
+  --output /tmp/rv1126-v1.11.1.rvota
 ```
 
 ## 首次A/B迁移

@@ -1,0 +1,11 @@
+#!/bin/sh
+set -eu
+
+# This launcher is intentionally stored outside every application release.
+# It keeps the management listener private even after rolling back to a release
+# whose own controller predates the loopback-only default.
+export RV1126_WEB_BIND=127.0.0.1
+if [ "$#" -eq 0 ]; then
+    set -- start
+fi
+exec /root/rv1126_objects/rv1126-web "$@"

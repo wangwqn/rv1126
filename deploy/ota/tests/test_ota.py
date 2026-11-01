@@ -164,6 +164,14 @@ class OTATest(unittest.TestCase):
         self.assertTrue(result["recovered"])
         self.assertEqual((self.current / "VERSION").read_text().strip(), "1.10.1")
 
+    def test_legacy_web_controller_is_forced_to_loopback(self):
+        controller = self.old_release / "rv1126-web"
+        controller.write_text(
+            "#!/bin/sh\n[ \"${RV1126_WEB_BIND:-}\" = 127.0.0.1 ]\n",
+            encoding="utf-8")
+        os.chmod(controller, 0o755)
+        self.manager._run_controller("rv1126-web", "health")
+
 
 if __name__ == "__main__":
     unittest.main()
