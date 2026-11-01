@@ -20,6 +20,9 @@ struct Config {
     int sub_width = 640, sub_height = 360;
     int rotation = 0;
     int fps = 30, ai_fps = 3;
+    // H.264 IDR interval. It is independent of frame rate so the Web API can
+    // trade recovery/seek latency against compression efficiency at runtime.
+    int gop = 30;
     // Keep the board-validated 4 Mbit/s quality baseline. The asynchronous
     // RTSP sender bounds each client's backlog and resynchronizes at an IDR.
     int bitrate = 4000000, sub_bitrate = 600000;
@@ -72,6 +75,8 @@ struct Config {
             throw std::invalid_argument("rotation must be 0,90,180,270");
         if (fps < 1 || fps > 60 || ai_fps < 1 || ai_fps > fps)
             throw std::invalid_argument("require 1 <= ai-fps <= fps <= 60");
+        if (gop < 1 || gop > 300)
+            throw std::invalid_argument("gop must be in [1,300]");
         if (pool_buffers < 4 || pool_buffers > 16)
             throw std::invalid_argument("pool-buffers must be in [4,16]");
         if (packet_queue < 4 || packet_queue > 256)
@@ -150,6 +155,7 @@ inline Config parse_config(int argc, char** argv) {
         else if (key == "--rotation") c.rotation = parse_integer(value);
         else if (key == "--fps") c.fps = parse_integer(value);
         else if (key == "--ai-fps") c.ai_fps = parse_integer(value);
+        else if (key == "--gop") c.gop = parse_integer(value);
         else if (key == "--bitrate") c.bitrate = parse_integer(value);
         else if (key == "--sub-bitrate") c.sub_bitrate = parse_integer(value);
         else if (key == "--pool-buffers") c.pool_buffers = parse_integer(value);
@@ -174,7 +180,7 @@ inline void print_usage(std::ostream& out) {
            "  --sensor-mode 1080p|4k|4k-ispp-1080|current (default: 1080p RAW12)\n"
            "  --main-node rkispp_scale0 --sub-node rkispp_scale1 --camera 0\n"
            "  --width 1920 --height 1080 --sub-width 640 --sub-height 360\n"
-           "  --rotation 0 --fps 30 --ai-fps 3 --threshold 0.35\n"
+           "  --rotation 0 --fps 30 --ai-fps 3 --gop 30 --threshold 0.35\n"
            "  --max-osd-boxes 8 (highest-confidence detections, RGA overlay)\n"
            "  --bitrate 4000000 --sub-bitrate 600000 --pool-buffers 8\n"
            "  --packet-queue 8\n"

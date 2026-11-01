@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>RV1126 Vision Console</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <p class="eyebrow">EDGE VISION / DEVICE CONSOLE</p>
+      <h1>RV1126 <span>Vision Console</span></h1>
+    </div>
+    <div class="top-actions">
+      <span id="connection" class="pill warn">等待认证</span>
+      <button id="refresh" class="ghost">刷新</button>
+      <button id="auth" class="ghost">令牌</button>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero panel">
+      <div>
+        <p class="eyebrow">实时设备</p>
+        <h2 id="device-state">尚未连接</h2>
+        <p id="device-meta" class="muted">输入板端 Web 令牌后读取状态。</p>
+      </div>
+      <div class="hero-actions">
+        <button id="restart" class="danger">重启媒体管线</button>
+        <button id="logs">导出运行日志</button>
+      </div>
+    </section>
+
+    <nav class="tabs" aria-label="功能导航">
+      <button class="tab active" data-tab="overview">总览</button>
+      <button class="tab" data-tab="config">码流与 AI</button>
+      <button class="tab" data-tab="analytics">区域与越线</button>
+      <button class="tab" data-tab="events">事件与文件</button>
+      <button class="tab" data-tab="models">模型管理</button>
+    </nav>
+
+    <section id="overview" class="tab-page active">
+      <div id="metrics" class="metric-grid"></div>
+      <div class="grid two">
+        <article class="panel">
+          <div class="section-title"><div><p class="eyebrow">STREAMS</p><h3>RTSP 码流</h3></div></div>
+          <div id="streams" class="stack"></div>
+        </article>
+        <article class="panel">
+          <div class="section-title"><div><p class="eyebrow">HEALTH</p><h3>管线健康</h3></div></div>
+          <div id="health-list" class="detail-list"></div>
+        </article>
+      </div>
+    </section>
+
+    <section id="config" class="tab-page">
+      <form id="config-form" class="panel form-grid">
+        <div class="section-title wide"><div><p class="eyebrow">RUNTIME CONTROL</p><h3>码流与 AI 参数</h3></div><span class="muted">参数经验证后原子写入</span></div>
+        <label>主流码率 (bit/s)<input name="bitrate" type="number" min="200000" max="12000000" step="100000"></label>
+        <label>子流码率 (bit/s)<input name="sub_bitrate" type="number" min="50000" max="4000000" step="50000"></label>
+        <label>GOP (帧)<input name="gop" type="number" min="1" max="300"></label>
+        <label>AI 帧率<input name="ai_fps" type="number" min="1" max="30"></label>
+        <label>置信度阈值<input name="threshold" type="number" min="0.01" max="1" step="0.01"></label>
+        <label>检测结果有效期 (ms)<input name="result_ttl_ms" type="number" min="100" max="10000"></label>
+        <label>最大 OSD 框数<input name="max_osd_boxes" type="number" min="1" max="8"></label>
+        <label>RTSP TCP 客户端缓冲 (KiB)<input name="rtsp_client_buffer_kb" type="number" min="128" max="4096"></label>
+        <div class="wide form-actions">
+          <label class="check"><input id="apply-now" type="checkbox"> 保存后立即重启并应用</label>
+          <button type="submit">保存配置</button>
+        </div>
+      </form>
+    </section>
+
+    <section id="analytics" class="tab-page">
+      <div class="grid canvas-grid">
+        <article class="panel">
+          <div class="section-title"><div><p class="eyebrow">NORMALIZED COORDINATES</p><h3>规则绘制板</h3></div></div>
+          <div class="draw-tools"><button data-tool="region" class="active">画区域</button><button data-tool="line">画越线</button><button id="clear-shapes" class="ghost">清空</button></div>
+          <canvas id="rule-canvas" width="960" height="540"></canvas>
+          <p class="notice">当前版本完成区域/越线的绘制、归一化坐标与持久化；基于跟踪 ID 的事件判定引擎尚未接入。</p>
+        </article>
+        <article class="panel">
+          <div class="section-title"><div><p class="eyebrow">RULE SET</p><h3>已定义规则</h3></div></div>
+          <div id="shape-list" class="stack compact"></div>
+          <button id="save-shapes" class="full">保存规则</button>
+        </article>
+      </div>
+    </section>
+
+    <section id="events" class="tab-page">
+      <div class="grid two">
+        <article class="panel"><div class="section-title"><div><p class="eyebrow">EVENT LOG</p><h3>最新事件</h3></div><button id="reload-events" class="ghost">刷新</button></div><div id="event-list" class="stack compact"></div></article>
+        <article class="panel"><div class="section-title"><div><p class="eyebrow">MEDIA ARCHIVE</p><h3>录像与截图</h3></div><select id="file-kind"><option value="recordings">录像</option><option value="snapshots">截图</option></select></div><div id="file-list" class="stack compact"></div></article>
+      </div>
+    </section>
+
+    <section id="models" class="tab-page">
+      <div class="grid two">
+        <article class="panel">
+          <div class="section-title"><div><p class="eyebrow">STAGED UPLOAD</p><h3>上传模型组</h3></div></div>
+          <label>RKNN 模型<input id="model-rknn" type="file" accept=".rknn"></label>
+          <label>元数据<input id="model-metadata" type="file" accept=".json,application/json"></label>
+          <label>标签图集<input id="model-labels" type="file" accept=".png,image/png"></label>
+          <div class="form-actions"><button id="upload-model">上传并校验</button><button id="activate-model" class="danger">切换并重启</button></div>
+          <p class="notice">上传前浏览器计算 SHA-256，板端重新校验；切换失败会恢复上一模型。</p>
+        </article>
+        <article class="panel"><div class="section-title"><div><p class="eyebrow">MODEL STATE</p><h3>模型状态</h3></div><button id="reload-models" class="ghost">刷新</button></div><pre id="model-state">尚未读取</pre></article>
+      </div>
+    </section>
+  </main>
+
+  <dialog id="token-dialog">
+    <form method="dialog" id="token-form">
+      <p class="eyebrow">AUTHENTICATION</p><h3>输入管理令牌</h3>
+      <p class="muted">板端执行 <code>/root/rv1126_objects/rv1126-web token</code> 查看。令牌只保存在当前浏览器会话。</p>
+      <input id="token-input" type="password" autocomplete="current-password" required>
+      <div class="form-actions"><button value="cancel" class="ghost">取消</button><button id="save-token" value="default">连接</button></div>
+    </form>
+  </dialog>
+  <div id="toast" role="status"></div>
+  <script src="/app.js"></script>
+</body>
+</html>

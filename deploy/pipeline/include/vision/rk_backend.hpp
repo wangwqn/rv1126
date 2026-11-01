@@ -104,7 +104,8 @@ private:
 
 class VencChannel : Noncopyable {
 public:
-    VencChannel(int channel, int width, int height, int stride, int vstride, int fps, int bitrate);
+    VencChannel(int channel, int width, int height, int stride, int vstride,
+                int fps, int bitrate, int gop);
     ~VencChannel();
     void send(const Frame& frame);
 private:

@@ -157,12 +157,14 @@ public:
                                               config_.output_height(),
                                               config_.output_width(),
                                               config_.output_height(),
-                                              config_.fps, config_.bitrate));
+                                              config_.fps, config_.bitrate,
+                                              config_.gop));
             sub_venc_.reset(new VencChannel(1, config_.sub_output_width(),
                                              config_.sub_output_height(),
                                              config_.sub_output_width(),
                                              config_.sub_output_height(),
-                                             config_.fps, config_.sub_bitrate));
+                                             config_.fps, config_.sub_bitrate,
+                                             config_.gop));
             main_venc_bind_.reset(new Binding(main_rga_->endpoint(),
                                                MPP_CHN_S{RK_ID_VENC, 0, 0}));
             sub_venc_bind_.reset(new Binding(sub_rga_->endpoint(),

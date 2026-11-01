@@ -1,0 +1,115 @@
+#!/bin/sh
+set -eu
+
+APP_DIR=${RV1126_APP_DIR:-/root/rv1126_objects}
+SERVER="$APP_DIR/rv1126-web.py"
+PID_FILE=${RV1126_WEB_PID_FILE:-/var/run/rv1126-web.pid}
+LOG_FILE=${RV1126_WEB_LOG_FILE:-/tmp/rv1126-web.log}
+TOKEN_FILE=${RV1126_WEB_TOKEN_FILE:-$APP_DIR/web.token}
+BIND=${RV1126_WEB_BIND:-0.0.0.0}
+PORT=${RV1126_WEB_PORT:-8080}
+CONTROLLER=$(readlink -f "$0")
+
+PATH=/bin:/sbin:/usr/bin:/usr/sbin:/oem:/oem/bin:/oem/usr/bin
+export PATH
+
+running_pid() {
+    [ -s "$PID_FILE" ] || return 1
+    pid=$(cat "$PID_FILE" 2>/dev/null || true)
+    case "$pid" in *[!0-9]*|'') return 1 ;; esac
+    [ -d "/proc/$pid" ] || return 1
+    command_line=$(tr '\000' ' ' <"/proc/$pid/cmdline" 2>/dev/null || true)
+    case "$command_line" in *"$SERVER"*) printf '%s\n' "$pid" ;; *) return 1 ;; esac
+}
+
+ensure_token() {
+    if [ ! -s "$TOKEN_FILE" ]; then
+        umask 077
+        token=$(head -c 32 /dev/urandom | sha256sum | awk '{print $1}')
+        printf '%s\n' "$token" >"$TOKEN_FILE"
+    fi
+    chmod 0600 "$TOKEN_FILE"
+}
+
+start_service() {
+    [ -s "$SERVER" ] || { echo "Missing server: $SERVER" >&2; return 1; }
+    command -v python3 >/dev/null 2>&1 || { echo "python3 is required" >&2; return 1; }
+    if pid=$(running_pid); then
+        echo "Already running: pid=$pid http://$BIND:$PORT/"
+        return 0
+    fi
+    ensure_token
+    rm -f "$PID_FILE"
+    : >"$LOG_FILE"
+    nohup start-stop-daemon -S -m -p "$PID_FILE" -x /usr/bin/python3 -- \
+        "$SERVER" --bind "$BIND" --port "$PORT" --root "$APP_DIR" \
+        --token-file "$TOKEN_FILE" >"$LOG_FILE" 2>&1 </dev/null &
+    sleep 2
+    if ! pid=$(running_pid); then
+        echo "Web service failed to start:" >&2
+        tail -80 "$LOG_FILE" >&2 || true
+        return 1
+    fi
+    echo "Started: pid=$pid port=$PORT log=$LOG_FILE"
+}
+
+stop_service() {
+    if ! pid=$(running_pid); then
+        rm -f "$PID_FILE"
+        echo "Stopped"
+        return 0
+    fi
+    kill -TERM "$pid" 2>/dev/null || true
+    count=0
+    while [ -d "/proc/$pid" ] && [ "$count" -lt 10 ]; do
+        sleep 1
+        count=$((count + 1))
+    done
+    [ ! -d "/proc/$pid" ] || kill -KILL "$pid" 2>/dev/null || true
+    rm -f "$PID_FILE"
+    echo "Stopped"
+}
+
+status_service() {
+    if pid=$(running_pid); then
+        echo "Running: pid=$pid bind=$BIND port=$PORT log=$LOG_FILE"
+        return 0
+    fi
+    echo "Stopped: port=$PORT log=$LOG_FILE"
+    return 3
+}
+
+health_service() {
+    pid=$(running_pid) || { echo "Unhealthy: process is not running"; return 1; }
+    body=$(wget -qO- -T 3 "http://127.0.0.1:$PORT/api/health" 2>/dev/null || true)
+    case "$body" in *'"ok":true'*)
+        echo "Healthy: pid=$pid port=$PORT"
+        return 0
+        ;;
+    esac
+    echo "Unhealthy: HTTP health request failed"
+    return 1
+}
+
+command=${1:-}
+case "$command" in
+    start) start_service ;;
+    stop) stop_service ;;
+    restart) stop_service; start_service ;;
+    status) status_service ;;
+    health) health_service ;;
+    token) ensure_token; cat "$TOKEN_FILE" ;;
+    log) tail -100 "$LOG_FILE" 2>/dev/null || true ;;
+    install-autostart)
+        ln -sfn "$CONTROLLER" /etc/init.d/S98rv1126-web
+        echo "Installed boot service: /etc/init.d/S98rv1126-web"
+        ;;
+    remove-autostart)
+        [ ! -L /etc/init.d/S98rv1126-web ] || rm /etc/init.d/S98rv1126-web
+        echo "Removed boot service"
+        ;;
+    *)
+        echo "Usage: $0 {start|stop|restart|status|health|token|log|install-autostart|remove-autostart}" >&2
+        exit 2
+        ;;
+esac

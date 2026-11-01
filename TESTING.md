@@ -1,5 +1,30 @@
 # 物品检测测试流程
 
+## Web 管理服务回归
+
+主机回归（仅监听 `127.0.0.1` 临时端口）：
+
+```bash
+python3 -m unittest discover -s deploy/web/tests -v
+python3 -m py_compile deploy/web/rv1126_web.py
+node --check deploy/web/web-app.js
+sh -n deploy/web/rv1126-web release/rv1126/objects/rv1126-object
+```
+
+板端部署后验收：
+
+```bash
+BOARD_IP=192.168.137.176
+TOKEN=$(adb shell '/root/rv1126_objects/rv1126-web token' | tr -d '\r\n')
+curl -fsS "http://$BOARD_IP:8080/api/health"
+curl -fsS -H "Authorization: Bearer $TOKEN" "http://$BOARD_IP:8080/api/status"
+curl -fsS -H "Authorization: Bearer $TOKEN" "http://$BOARD_IP:8080/api/metrics"
+```
+
+浏览器中再保存一次“不立即应用”配置和一组区域/越线，刷新后
+数据应仍存在。“立即应用”和“切换模型”会重启 RTSP，只在允许
+中断推流的验收时段执行。
+
 若程序已经运行，先测试播放，不要重复启动另一个摄像头程序。
 
 ## 1. Ubuntu 检查开发板和网络

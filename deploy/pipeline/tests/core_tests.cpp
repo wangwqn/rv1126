@@ -61,7 +61,7 @@ void expect_invalid(Function function, const std::string& message) {
 
 void test_config_parsing_and_validation() {
     const auto defaults = parse({});
-    check(defaults.fps == 30 && defaults.ai_fps == 3 &&
+    check(defaults.fps == 30 && defaults.ai_fps == 3 && defaults.gop == 30 &&
               defaults.bitrate == 4000000 && defaults.sub_bitrate == 600000 &&
               defaults.max_osd_boxes == 8 && defaults.result_ttl_ms == 500 &&
               defaults.rtsp_client_buffer_kb == 512 &&
@@ -71,7 +71,7 @@ void test_config_parsing_and_validation() {
 
     const auto configured = parse({"--width", "1920", "--height", "1080",
                                    "--sub-width", "640", "--sub-height", "360",
-                                   "--rotation", "90", "--fps", "30",
+                                   "--rotation", "90", "--fps", "30", "--gop", "60",
                                    "--ai-fps", "6", "--rtsp-port", "9554",
                                    "--rtsp-client-buffer-kb", "1024",
                                    "--sensor-mode", "current",
@@ -84,7 +84,7 @@ void test_config_parsing_and_validation() {
     check(configured.width == 1920 && configured.height == 1080 &&
               configured.output_width() == 1080 && configured.output_height() == 1920,
           "rotation swaps configured output dimensions");
-    check(configured.fps == 30 && configured.ai_fps == 6 &&
+    check(configured.fps == 30 && configured.ai_fps == 6 && configured.gop == 60 &&
               configured.rtsp_port == 9554 && configured.threshold == 0.75f &&
               configured.rtsp_client_buffer_kb == 1024 &&
               configured.max_osd_boxes == 6 &&
@@ -105,6 +105,10 @@ void test_config_parsing_and_validation() {
                    "mismatched stream aspect ratio is rejected");
     expect_invalid([] { parse({"--ai-fps", "31"}); },
                    "AI sampling cannot exceed video rate");
+    expect_invalid([] { parse({"--gop", "0"}); },
+                   "zero-length GOP is rejected");
+    expect_invalid([] { parse({"--gop", "301"}); },
+                   "excessive GOP is rejected");
     expect_invalid([] { parse({"--threshold", "nan"}); },
                    "non-finite confidence is rejected");
     expect_invalid([] { parse({"--unknown", "1"}); },

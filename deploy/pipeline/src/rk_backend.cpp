@@ -667,7 +667,8 @@ Binding::Binding(MPP_CHN_S source, MPP_CHN_S destination) : source_(source), des
 }
 Binding::~Binding() { warn_rk(RK_MPI_SYS_UnBind(&source_, &destination_), "SYS UnBind"); }
 
-VencChannel::VencChannel(int channel, int width, int height, int stride, int vstride, int fps, int bitrate)
+VencChannel::VencChannel(int channel, int width, int height, int stride,
+                         int vstride, int fps, int bitrate, int gop)
     : channel_(channel) {
     VENC_CHN_ATTR_S attr{};
     attr.stVencAttr.enType = RK_CODEC_TYPE_H264;
@@ -677,7 +678,7 @@ VencChannel::VencChannel(int channel, int width, int height, int stride, int vst
     attr.stVencAttr.u32Profile = 66; // baseline: no B-frame reordering
     attr.stRcAttr.enRcMode = VENC_RC_MODE_H264CBR;
     auto& rc = attr.stRcAttr.stH264Cbr;
-    rc.u32Gop = fps; rc.u32BitRate = bitrate;
+    rc.u32Gop = gop; rc.u32BitRate = bitrate;
     rc.fr32DstFrameRateDen = 1; rc.fr32DstFrameRateNum = fps;
     rc.u32SrcFrameRateDen = 1; rc.u32SrcFrameRateNum = fps;
     check_rk(RK_MPI_VENC_CreateChn(channel_, &attr), "VENC CreateChn");

@@ -21,18 +21,29 @@ source "$project_dir/scripts/lib/atomic_adb_deploy.sh"
 )
 
 version=$(tr -d '[:space:]' <"$release_dir/VERSION")
+commit_file=$(mktemp /tmp/rv1126-git-commit.XXXXXX)
+trap 'rm -f "$commit_file"' EXIT
+git -C "$project_dir" rev-parse HEAD >"$commit_file"
 atomic_adb_deploy /root/rv1126_objects "v$version" \
   "$release_dir/VERSION|VERSION|0644" \
+  "$commit_file|GIT_COMMIT|0644" \
   "$release_dir/objects/objects.rknn|objects.rknn|0644" \
   "$release_dir/objects/objects.json|objects.json|0644" \
   "$release_dir/objects/labels.png|labels.png|0644" \
   "$release_dir/objects/object_image|object_image|0755" \
   "$release_dir/objects/rv1126-object|rv1126-object|0755" \
+  "$release_dir/objects/rv1126-web|rv1126-web|0755" \
+  "$release_dir/web/rv1126_web.py|rv1126-web.py|0755" \
+  "$release_dir/web/web-index.html|web-index.html|0644" \
+  "$release_dir/web/web-app.js|web-app.js|0644" \
+  "$release_dir/web/web-styles.css|web-styles.css|0644" \
   "$release_dir/objects/rkmedia_object_detection_rtsp|rkmedia_object_detection_rtsp|0755"
 
 echo "Upload complete. Manage it on the board with:"
 echo "  /root/rv1126_objects/rv1126-object start"
 echo "  /root/rv1126_objects/rv1126-object status"
+echo "  /root/rv1126_objects/rv1126-web start"
+echo "  /root/rv1126_objects/rv1126-web token"
 if (( restart )); then
   adb shell '/root/rv1126_objects/rv1126-object restart'
   healthy=0
@@ -51,4 +62,6 @@ if (( restart )); then
     echo "Deployment completed, but the restarted service did not become healthy" >&2
     exit 1
   fi
+  adb shell '/root/rv1126_objects/rv1126-web restart'
+  adb shell '/root/rv1126_objects/rv1126-web health'
 fi

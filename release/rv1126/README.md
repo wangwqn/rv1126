@@ -38,7 +38,20 @@ sha256sum -c SHA256SUMS
 bash scripts/deploy_release.sh --restart
 adb shell '/root/rv1126_objects/rv1126-object status'
 adb shell '/root/rv1126_objects/rv1126-object health'
+adb shell '/root/rv1126_objects/rv1126-web install-autostart'
+adb shell '/root/rv1126_objects/rv1126-web start'
+adb shell '/root/rv1126_objects/rv1126-web token'
 ```
+
+同一 Wi-Fi 下访问 `http://开发板IP:8080/`，使用 `rv1126-web token`
+输出的 Bearer Token 登录。Web 服务仅依赖板端 Python 3 标准库，不修改
+nginx，也不进入 DMA-BUF/编码/RTSP 数据路径。端口默认为 TCP 8080；
+可用 `RV1126_WEB_PORT` 和 `RV1126_WEB_BIND` 覆盖。
+
+界面支持主/子码率、GOP、AI FPS、置信度、OSD TTL/数量与客户端
+缓冲配置。勾选“立即应用”会中断 RTSP 并重启管线；若健康检查
+失败，服务会恢复旧配置并尝试重启。区域/越线当前仅保存坐标，
+跟踪和规则事件引擎是后续扩展。
 
 部署使用隐藏暂存目录：全部文件上传后先在板端执行 SHA256 校验，通过后
 才用同文件系统的 `rename` 替换正式文件，因此中断上传不会把主程序

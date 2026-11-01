@@ -3,6 +3,7 @@ set -eu
 
 APP_DIR=${RV1126_APP_DIR:-/root/rv1126_objects}
 APP="$APP_DIR/rkmedia_object_detection_rtsp"
+RUNTIME_ARGS_FILE=${RV1126_RUNTIME_ARGS_FILE:-$APP_DIR/runtime.args}
 PID_FILE=${RV1126_PID_FILE:-/var/run/rv1126-object.pid}
 LOG_FILE=${RV1126_LOG_FILE:-/tmp/rv1126-object.log}
 CONTROLLER=$(readlink -f "$0")
@@ -88,11 +89,20 @@ set_default_args() {
         --sensor-mode 1080p \
         --width 1920 --height 1080 \
         --sub-width 640 --sub-height 360 \
-        --fps 30 --ai-fps 3 --max-osd-boxes 8 \
+        --fps 30 --ai-fps 3 --gop 30 --max-osd-boxes 8 \
         --bitrate 4000000 --sub-bitrate 600000 \
         --pool-buffers 8 --packet-queue 8 \
         --rotation 270 --threshold 0.25 --result-ttl-ms 500 \
         --audio-device plughw:0,0 --audio-source main --audio-period-ms 20
+    printf '%s\n' "$@"
+}
+
+load_runtime_args() {
+    [ -s "$RUNTIME_ARGS_FILE" ] || return 1
+    while IFS= read -r arg || [ -n "$arg" ]; do
+        [ -z "$arg" ] || set -- "$@" "$arg"
+    done <"$RUNTIME_ARGS_FILE"
+    [ "$#" -gt 0 ] || return 1
     printf '%s\n' "$@"
 }
 
@@ -325,7 +335,11 @@ start_service() {
     [ -x "$APP" ] || { echo "Missing executable: $APP" >&2; return 1; }
     [ -s "$APP_DIR/objects.rknn" ] || { echo "Missing model: $APP_DIR/objects.rknn" >&2; return 1; }
     if [ "$#" -eq 0 ]; then
-        set -- $(set_default_args)
+        if [ -s "$RUNTIME_ARGS_FILE" ]; then
+            set -- $(load_runtime_args)
+        else
+            set -- $(set_default_args)
+        fi
     fi
 
     if pid=$(running_pid); then
@@ -503,7 +517,11 @@ case "$command" in
     foreground)
         cd "$APP_DIR"
         if [ "$#" -eq 0 ]; then
-            set -- $(set_default_args)
+            if [ -s "$RUNTIME_ARGS_FILE" ]; then
+                set -- $(load_runtime_args)
+            else
+                set -- $(set_default_args)
+            fi
         fi
         exec "$APP" "$@"
         ;;
