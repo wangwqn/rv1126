@@ -94,6 +94,37 @@ class WebApiTest(unittest.TestCase):
         self.assertIn("npu_load_percent", metrics)
         self.assertIn("npu_frequency_mhz", metrics)
 
+    def test_health_wait_retries_during_media_warmup(self):
+        attempts = []
+
+        def controller(action, timeout=30):
+            attempts.append((action, timeout))
+            if len(attempts) < 3:
+                raise RuntimeError("media process is still warming up")
+            return "Healthy: ready"
+
+        self.state.run_controller = controller
+        result = self.state.wait_controller_health(timeout=1, interval=0)
+        self.assertEqual(result, "Healthy: ready")
+        self.assertEqual([item[0] for item in attempts], ["health", "health", "health"])
+
+    def test_restart_api_waits_for_media_health(self):
+        actions = []
+
+        def controller(action, timeout=30):
+            actions.append(action)
+            return "restart requested"
+
+        def wait_health(timeout=60, interval=2):
+            actions.append("wait-health")
+            return "Healthy: ready"
+
+        self.state.run_controller = controller
+        self.state.wait_controller_health = wait_health
+        result = json.load(self.request("/api/restart", "POST", b"{}"))
+        self.assertTrue(result["restarted"])
+        self.assertEqual(actions, ["restart", "wait-health"])
+
 
 if __name__ == "__main__":
     unittest.main()

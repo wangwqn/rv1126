@@ -268,8 +268,8 @@ class ManagementState:
             if apply_now:
                 try:
                     self.run_controller("restart", timeout=90)
-                    self.run_controller("health", timeout=15)
-                except Exception:
+                    self.wait_controller_health()
+                except Exception as apply_error:
                     if old_config is None:
                         self.runtime_config.unlink(missing_ok=True)
                     else:
@@ -280,9 +280,12 @@ class ManagementState:
                         atomic_write(self.runtime_args, old_args)
                     try:
                         self.run_controller("restart", timeout=90)
-                    except Exception:
-                        pass
-                    raise
+                        self.wait_controller_health()
+                    except Exception as rollback_error:
+                        raise RuntimeError(
+                            "configuration apply failed: {}; rollback failed: {}".format(
+                                apply_error, rollback_error))
+                    raise apply_error
         return {"config": validated, "applied": apply_now}
 
     def run_controller(self, action, timeout=30):
@@ -294,6 +297,24 @@ class ManagementState:
         if code:
             raise RuntimeError(output or "media controller failed")
         return output
+
+    def wait_controller_health(self, timeout=60, interval=2):
+        """Wait for the camera/media graph to finish its asynchronous warm-up."""
+        deadline = time.monotonic() + timeout
+        attempts = 0
+        last_error = None
+        while True:
+            attempts += 1
+            try:
+                return self.run_controller("health", timeout=20)
+            except (RuntimeError, OSError, subprocess.TimeoutExpired) as error:
+                last_error = error
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise RuntimeError(
+                    "media pipeline did not become healthy within {}s after {} attempts: {}".format(
+                        timeout, attempts, last_error))
+            time.sleep(min(interval, remaining))
 
     @staticmethod
     def _read_int(path, default=0):
@@ -628,7 +649,7 @@ class ManagementState:
                 config = self.config()
                 atomic_write(self.runtime_args, "\n".join(self.arguments(config)) + "\n")
                 self.run_controller("start", timeout=40)
-                self.run_controller("health", timeout=20)
+                self.wait_controller_health()
             except Exception:
                 failed = self.model_history / (time.strftime("%Y%m%d-%H%M%S") + "-failed")
                 if self.model_active.is_dir():
@@ -640,8 +661,9 @@ class ManagementState:
                 atomic_write(self.runtime_args, "\n".join(self.arguments(config)) + "\n")
                 try:
                     self.run_controller("start", timeout=40)
-                except Exception:
-                    pass
+                    self.wait_controller_health()
+                except Exception as rollback_error:
+                    raise RuntimeError("model activation rollback failed: {}".format(rollback_error))
                 raise
         return {"activated": True, "manifest": manifest}
 
@@ -757,7 +779,7 @@ class ApiHandler(BaseHTTPRequestHandler):
                 self.json_response(HTTPStatus.OK, self.state.save_config(self._json_body()))
             elif path == "/api/restart":
                 output = self.state.run_controller("restart", timeout=90)
-                health = self.state.run_controller("health", timeout=20)
+                health = self.state.wait_controller_health()
                 self.json_response(HTTPStatus.OK, {"restarted": True, "output": output, "health": health})
             elif path == "/api/model/upload":
                 query = urllib.parse.parse_qs(parsed.query)
