@@ -14,7 +14,7 @@
 ```bash
 git clone git@github.com:wangwqn/rv1126.git
 cd rv1126
-git checkout v1.12.1
+git checkout v1.12.2
 bash scripts/verify_checkout.sh
 ```
 
@@ -29,6 +29,13 @@ P50/P95/P99/max 统计；指标边界、真机结果和一键抓取方法见
 需要保存全部样本并绘图时使用 `--latency-csv /tmp/latency.csv`，或执行
 `bash scripts/capture_runtime_latency.sh 60`，脚本会自动拉取 CSV、重新计算全量
 百分位并生成不依赖第三方 Python 包的 SVG 图。
+
+最终端到端时延使用同屏光学对拍工具验证：打开
+`scripts/optical_latency_timer.html`，让IMX415拍摄计时器，并在同一桌面显示RTSP
+播放器；`capture_optical_latency_windows.ps1`批量截图后，由
+`optical_latency_analyzer.html`自动识别两组时间码，导出逐样本CSV以及
+P50/P95/P99。工具不依赖OCR或云服务，详细流程见
+`deploy/pipeline/docs/optical-e2e-latency.md`。
 
 尚未迁移A/B目录的相同开发板/rootfs，可使用ADB部署已编译的发布包：
 

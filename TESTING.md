@@ -37,7 +37,7 @@ curl --cacert "$CA_CERT" -fsS -H "Authorization: Bearer $TOKEN" "https://$BOARD_
   --private-key "$KEY_DIR/rv1126-ota-signing-private.pem" \
   --trusted-key "$KEY_DIR/<key-id>.json" \
   --min-version 1.10.1 \
-  --output /tmp/rv1126-v1.12.1.rvota
+  --output /tmp/rv1126-v1.12.2.rvota
 ```
 
 必须分别验证：正常签名包、改动1字节的包、错误设备型号、相同序号重放、
@@ -318,6 +318,21 @@ bash scripts/capture_runtime_latency.sh 60
 各指标的准确起止边界和当前真机基线见
 `deploy/pipeline/docs/runtime-latency.md`；其中 `server_total` 只到板端 RTSP 发送
 API 返回，不是 VLC 显示端到端时延。
+
+## 10.1 光学端到端时延
+
+在Windows宿主机同屏显示毫秒计时器和RTSP播放器后，自动采集120张截图：
+
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass
+./scripts/capture_optical_latency_windows.ps1 -Samples 120 -IntervalMs 500
+```
+
+随后打开 `scripts/optical_latency_analyzer.html`，批量选择PNG，在第一张图上框选
+实时计时器和播放器内计时器，点击“分析全部截图”并导出CSV。有效样本必须不少于
+100个；建议记录平均值、P50、P95、P99、最大值、识别成功率、TCP/UDP、播放器版本
+和低缓存参数。完整布置、误差边界和判定口径见
+`deploy/pipeline/docs/optical-e2e-latency.md`。
 
 ## 11. 8小时完整功能验收
 

@@ -152,9 +152,11 @@ ffplay -fflags nobuffer -flags low_delay -framedrop \
   rtsp://开发板当前IP:8554/live/main_stream
 ```
 
-让摄像头拍摄毫秒计时器，同时在播放器中截图，对比“实物计时器”和“画面计时器”；
-至少记录 100 次并统计 P50/P95/P99。当前尚未完成这项光学对拍，因此不能声称
-端到端已经低于 200 ms。
+使用 `scripts/optical_latency_timer.html` 显示机器可读的毫秒计时器，让摄像头拍摄，
+同时在同一桌面显示播放器；用 `capture_optical_latency_windows.ps1` 批量采集至少
+100张同屏截图，再由 `optical_latency_analyzer.html` 自动计算P50/P95/P99。
+工具操作、误差范围和验收标准见 `optical-e2e-latency.md`。在取得真实CSV前不能
+声称端到端已经低于200 ms。
 
 板端内部的分段测量使用：
 

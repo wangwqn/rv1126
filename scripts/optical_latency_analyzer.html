@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>RV1126 光学端到端时延分析器</title>
+  <style>
+    :root{color-scheme:dark;font-family:system-ui,sans-serif;background:#0b1012;color:#e8f2ef}
+    body{max-width:1500px;margin:auto;padding:18px} h1{font-size:24px;margin:0 0 8px}
+    .panel{background:#121a1d;border:1px solid #2b3a3f;border-radius:10px;padding:14px;margin:12px 0}
+    .controls{display:flex;flex-wrap:wrap;gap:10px;align-items:center} button,input,select{font:inherit;padding:7px}
+    button.active{outline:2px solid #38e0c0}.source{color:#4debd0}.stream{color:#ffbd59}
+    #preview{display:block;max-width:100%;height:auto;background:#000;cursor:crosshair;margin-top:12px}
+    table{border-collapse:collapse;width:100%;font-family:ui-monospace,monospace;font-size:13px}
+    th,td{padding:6px;border-bottom:1px solid #2b3a3f;text-align:right}th:first-child,td:first-child{text-align:left}
+    .ok{color:#62e6a7}.bad{color:#ff6f78}.small{color:#9cb0aa;font-size:13px}.stat{font-size:20px;font-weight:700}
+    code{color:#9ee8db} label{white-space:nowrap}
+  </style>
+</head>
+<body>
+  <h1>RV1126 光学端到端时延分析器</h1>
+  <div class="small">选择同一窗口布局的截图，在第一张图上依次框选实时计时器和RTSP画面内计时器；随后批量识别并统计。</div>
+
+  <section class="panel controls">
+    <label>截图（建议≥100张） <input id="files" type="file" accept="image/*" multiple></label>
+    <button id="pick-source" class="source">1. 框选实时计时器</button>
+    <button id="pick-stream" class="stream">2. 框选画面计时器</button>
+    <label>实时旋转 <select id="source-rotation"><option>0</option><option>90</option><option>180</option><option>270</option></select>°</label>
+    <label>画面旋转 <select id="stream-rotation"><option>0</option><option>90</option><option>180</option><option>270</option></select>°</label>
+    <label>最大合理时延 <input id="max-latency" type="number" value="5000" min="1" max="60000" style="width:90px"> ms</label>
+    <button id="analyze">分析全部截图</button>
+    <button id="download" disabled>下载CSV</button>
+  </section>
+  <section class="panel">
+    <div><span class="source">实时ROI：</span><code id="source-roi">未选择</code>　
+      <span class="stream">画面ROI：</span><code id="stream-roi">未选择</code></div>
+    <canvas id="preview"></canvas>
+  </section>
+  <section class="panel" id="summary">尚未分析。</section>
+  <section class="panel" style="overflow:auto">
+    <table><thead><tr><th>文件</th><th>实时码</th><th>画面码</th><th>时延(ms)</th><th>实时置信度</th><th>画面置信度</th><th>结果</th></tr></thead>
+      <tbody id="results"></tbody></table>
+  </section>
+
+  <script src="optical_latency_core.js"></script>
+  <script>
+    "use strict";
+    const $ = (id) => document.getElementById(id);
+    const state = {files:[], previewImage:null, source:null, stream:null, selecting:null, start:null, rows:[]};
+    const canvas = $("preview");
+    const ctx = canvas.getContext("2d");
+
+    function roiText(roi) { return roi ? [roi.x,roi.y,roi.w,roi.h].map(Math.round).join(",") : "未选择"; }
+    function updateRoiText() { $("source-roi").textContent=roiText(state.source); $("stream-roi").textContent=roiText(state.stream); }
+    function setSelecting(value) {
+      state.selecting=value;
+      $("pick-source").classList.toggle("active", value==="source");
+      $("pick-stream").classList.toggle("active", value==="stream");
+    }
+    function redraw() {
+      if (!state.previewImage) return;
+      ctx.drawImage(state.previewImage,0,0,canvas.width,canvas.height);
+      for (const [name,color] of [["source","#4debd0"],["stream","#ffbd59"]]) {
+        const r=state[name]; if(!r) continue;
+        ctx.strokeStyle=color;ctx.lineWidth=Math.max(2,canvas.width/700);ctx.strokeRect(r.x,r.y,r.w,r.h);
+        ctx.fillStyle=color;ctx.font=Math.max(14,canvas.width/70)+"px sans-serif";ctx.fillText(name,r.x+4,r.y+18);
+      }
+    }
+    function point(event) {
+      const rect=canvas.getBoundingClientRect();
+      return {x:(event.clientX-rect.left)*canvas.width/rect.width,y:(event.clientY-rect.top)*canvas.height/rect.height};
+    }
+    canvas.addEventListener("pointerdown", (event)=>{if(!state.selecting)return;state.start=point(event);canvas.setPointerCapture(event.pointerId);});
+    canvas.addEventListener("pointerup", (event)=>{
+      if(!state.start||!state.selecting)return; const end=point(event);
+      const roi={x:Math.min(state.start.x,end.x),y:Math.min(state.start.y,end.y),w:Math.abs(end.x-state.start.x),h:Math.abs(end.y-state.y)};
+      if(roi.w<20||roi.h<10){alert("选择区域太小");return;}
+      state[state.selecting]=roi;state.start=null;updateRoiText();redraw();
+      setSelecting(state.selecting==="source"?"stream":null);
+    });
+    $("pick-source").onclick=()=>setSelecting("source"); $("pick-stream").onclick=()=>setSelecting("stream");
+
+    function loadImage(file) {
+      return new Promise((resolve,reject)=>{const image=new Image();const url=URL.createObjectURL(file);
+        image.onload=()=>{URL.revokeObjectURL(url);resolve(image);};image.onerror=()=>{URL.revokeObjectURL(url);reject(new Error("无法读取图片"));};image.src=url;});
+    }
+    $("files").onchange=async(event)=>{
+      state.files=Array.from(event.target.files).sort((a,b)=>a.name.localeCompare(b.name));
+      if(!state.files.length)return; state.previewImage=await loadImage(state.files[0]);
+      canvas.width=state.previewImage.naturalWidth;canvas.height=state.previewImage.naturalHeight;redraw();setSelecting("source");
+    };
+
+    function normalizedCrop(image, roi, rotation) {
+      const raw=document.createElement("canvas");raw.width=Math.max(1,Math.round(roi.w));raw.height=Math.max(1,Math.round(roi.h));
+      raw.getContext("2d").drawImage(image,roi.x,roi.y,roi.w,roi.h,0,0,raw.width,raw.height);
+      let rotated=raw;
+      if(rotation!==0){rotated=document.createElement("canvas");const swap=rotation===90||rotation===270;
+        rotated.width=swap?raw.height:raw.width;rotated.height=swap?raw.width:raw.height;const rctx=rotated.getContext("2d");
+        rctx.translate(rotated.width/2,rotated.height/2);rctx.rotate(rotation*Math.PI/180);rctx.drawImage(raw,-raw.width/2,-raw.height/2);}
+      const out=document.createElement("canvas");out.width=1350;out.height=300;out.getContext("2d").drawImage(rotated,0,0,out.width,out.height);
+      return out.getContext("2d").getImageData(0,0,out.width,out.height);
+    }
+    const csvCell=(v)=>'"'+String(v??"").replaceAll('"','""')+'"';
+    $("analyze").onclick=async()=>{
+      if(!state.files.length||!state.source||!state.stream){alert("请先选择截图并框选两个计时器区域");return;}
+      const tbody=$("results");tbody.innerHTML="";state.rows=[];const maxLatency=Number($("max-latency").value);
+      for(const file of state.files){let row={file:file.name,ok:false,error:""};
+        try{const image=await loadImage(file);const source=OpticalLatency.decodeTimecode(normalizedCrop(image,state.source,Number($("source-rotation").value)));
+          const stream=OpticalLatency.decodeTimecode(normalizedCrop(image,state.stream,Number($("stream-rotation").value)));
+          const latency=OpticalLatency.latencyMs(source.value,stream.value);
+          if(latency>maxLatency)throw new Error("差值 "+latency+" ms 超过上限");
+          row={...row,ok:true,source:source.value,stream:stream.value,latency,sourceConfidence:source.confidence,streamConfidence:stream.confidence};
+        }catch(error){row.error=error.message;}state.rows.push(row);
+        const tr=document.createElement("tr");
+        const values=[row.file,row.source||"-",row.stream||"-",row.latency??"-",row.sourceConfidence?.toFixed(2)||"-",row.streamConfidence?.toFixed(2)||"-",row.ok?"OK":row.error];
+        values.forEach((value,index)=>{const td=document.createElement("td");td.textContent=String(value);if(index===6)td.className=row.ok?"ok":"bad";tr.appendChild(td);});tbody.appendChild(tr);
+      }
+      const values=state.rows.filter(r=>r.ok).map(r=>r.latency);const failed=state.rows.length-values.length;
+      if(values.length){const mean=values.reduce((a,b)=>a+b,0)/values.length;
+        $("summary").innerHTML=`<span class="stat">有效 ${values.length}/${state.rows.length}</span>　失败 ${failed}　平均 ${mean.toFixed(1)} ms　P50 ${OpticalLatency.percentile(values,.50)} ms　P95 ${OpticalLatency.percentile(values,.95)} ms　P99 ${OpticalLatency.percentile(values,.99)} ms　最大 ${Math.max(...values)} ms`;
+      }else $("summary").innerHTML='<span class="bad">没有可用样本；请收紧ROI、校正旋转并保证计时器正对摄像头。</span>';
+      $("download").disabled=!state.rows.length;
+    };
+    $("download").onclick=()=>{const header="file,source_timecode,stream_timecode,latency_ms,source_confidence,stream_confidence,status\n";
+      const body=state.rows.map(r=>[r.file,r.source,r.stream,r.latency,r.sourceConfidence?.toFixed(4),r.streamConfidence?.toFixed(4),r.ok?"ok":r.error].map(csvCell).join(",")).join("\n");
+      const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([header+body+"\n"],{type:"text/csv"}));a.download="rv1126-optical-latency.csv";a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);};
+  </script>
+</body>
+</html>

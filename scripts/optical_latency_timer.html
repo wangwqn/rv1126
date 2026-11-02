@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>RV1126 光学时延计时器</title>
+  <style>
+    html,body{margin:0;background:#020607;color:#f5fff8;font-family:system-ui,sans-serif;height:100%;overflow:hidden}
+    main{height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2vh}
+    canvas{width:96vw;height:auto;max-height:62vh;image-rendering:auto}
+    #human{font:700 clamp(28px,6vw,96px) ui-monospace,monospace;letter-spacing:.05em}
+    .hint{color:#8ca09a;font-size:clamp(13px,1.5vw,24px)}
+  </style>
+</head>
+<body>
+  <main>
+    <div class="hint">RV1126 OPTICAL E2E LATENCY · 按 F11 全屏 · 保持本窗口可见</div>
+    <canvas id="clock" width="1350" height="300"></canvas>
+    <div id="human">00:00:00.000</div>
+  </main>
+  <script src="optical_latency_core.js"></script>
+  <script>
+    "use strict";
+    const canvas = document.getElementById("clock");
+    const ctx = canvas.getContext("2d", {alpha:false});
+    const human = document.getElementById("human");
+    let previous = "";
+    function tick() {
+      const now = new Date();
+      const value = OpticalLatency.formatTimecode(now);
+      if (value !== previous) {
+        OpticalLatency.drawTimecode(ctx, value, canvas.width, canvas.height);
+        human.textContent = value.slice(0,2) + ":" + value.slice(2,4) + ":" +
+          value.slice(4,6) + "." + value.slice(6);
+        previous = value;
+      }
+      requestAnimationFrame(tick);
+    }
+    tick();
+  </script>
+</body>
+</html>
