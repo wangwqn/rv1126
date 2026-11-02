@@ -1,6 +1,7 @@
 #include "vision/pipeline.hpp"
 
 #include "vision/audio.hpp"
+#include "vision/analytics.hpp"
 #include "vision/core.hpp"
 #include "vision/latency_trace.hpp"
 #include "vision/rk_backend.hpp"
@@ -172,7 +173,13 @@ public:
             sub_venc_bind_.reset(new Binding(sub_rga_->endpoint(),
                                               MPP_CHN_S{RK_ID_VENC, 0, 1}));
             compositor_.reset(new HardwareCompositor(0, config_));
-            if (config_.ai) detector_.reset(new ObjectDetector(config_));
+            if (config_.ai) {
+                detector_.reset(new ObjectDetector(config_));
+                if (!config_.analytics_rules.empty())
+                    analytics_.reset(new AnalyticsEngine(
+                        config_.analytics_rules, config_.event_log, detector_->names(),
+                        config_.event_cooldown_ms, config_.event_max_missed));
+            }
             // Connect the hardware graph downstream first, then release VI
             // frames into it. This avoids filling RGA output buffers during
             // construction before a consumer exists.
@@ -259,6 +266,19 @@ public:
                 << ')';
         } else {
             out << " audio=off";
+        }
+        if (analytics_) {
+            const auto value = analytics_->snapshot();
+            out << " events(processed=" << value.processed
+                << ", generated=" << value.generated
+                << ", written=" << value.written
+                << ", dropped=" << value.dropped
+                << ", write_error=" << value.write_errors
+                << ", tracks=" << value.tracks
+                << ", regions=" << value.regions
+                << ", lines=" << value.lines << ')';
+        } else {
+            out << " events=off";
         }
         if (config_.latency_stats) {
             out << "\nlatency_ms p50/p95/p99/max "
@@ -383,6 +403,7 @@ private:
     }
 
     void teardown() noexcept {
+        analytics_.reset();
         detector_.reset();
         // Stop new frames before releasing ARGB label storage referenced by
         // RGA regions. UnBind is the synchronization boundary for the graph.
@@ -480,6 +501,7 @@ private:
                 observe_latency(LatencyMetric::ai_infer, ai_infer_, detection.pts_us,
                                 infer_end, duration_us(infer_end - infer_start));
             observe_pts_age(LatencyMetric::ai_total, ai_total_, detection.pts_us, infer_end);
+            if (analytics_) analytics_->process(detection);
             detections_.publish(std::move(detection));
             ++ai_completed_;
         }
@@ -693,6 +715,7 @@ private:
     std::unique_ptr<VencChannel> main_venc_, sub_venc_;
     std::unique_ptr<HardwareCompositor> compositor_;
     std::unique_ptr<ObjectDetector> detector_;
+    std::unique_ptr<AnalyticsEngine> analytics_;
     std::unique_ptr<AlsaCapture> audio_capture_;
     std::unique_ptr<RtspServer> rtsp_;
     std::unique_ptr<AsyncLatencyCsv> latency_csv_;

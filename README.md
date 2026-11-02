@@ -14,7 +14,7 @@
 ```bash
 git clone git@github.com:wangwqn/rv1126.git
 cd rv1126
-git checkout v1.13.0
+git checkout v1.14.0
 bash scripts/verify_checkout.sh
 ```
 
@@ -79,6 +79,10 @@ OTA schema 2支持stable/beta/development通道、依赖版本门禁、公钥轮
 主码流叠加绿色框、中文类别名和置信度，例如“苹果 92%”。
 子码流保留无标注的低分辨率预览，AI 从子流取帧，检测结果按坐标缩放到主流。
 标签已写入编码前的像素，VLC 无需额外插件。
+
+Web绘制的区域和越线规则会在媒体管线重启后由AI事件引擎加载。事件包括区域进入、
+区域离开和双方向越线，写入持久化 `events/events.jsonl` 并显示在管理页面。当前采用
+低开销同类别中心点跟踪，不是跨摄像头ReID；密集遮挡场景需要后续升级跟踪算法。
 
 实时管线默认将 IMX415 切换到 1944×1097 RAW12 的 2×2 相邻像素 binning
 模式，再按有效记录区域对齐为 1920×1080、30 FPS；它保留 4K 推荐记录区域的

@@ -77,6 +77,10 @@ void test_config_parsing_and_validation() {
                                    "--sensor-mode", "current",
                                    "--audio-source", "hands-free",
                                    "--audio-period-ms", "40",
+                                   "--analytics-rules", "/tmp/analytics.rules",
+                                   "--event-log", "/tmp/events.jsonl",
+                                   "--event-cooldown-ms", "1500",
+                                   "--event-max-missed", "4",
                                    "--max-osd-boxes", "6",
                                    "--threshold", "0.75", "--no-ai", "--no-osd",
                                    "--no-audio", "--no-isp",
@@ -89,6 +93,9 @@ void test_config_parsing_and_validation() {
               configured.rtsp_client_buffer_kb == 1024 &&
               configured.max_osd_boxes == 6 &&
               configured.sensor_mode == "current" &&
+              configured.analytics_rules == "/tmp/analytics.rules" &&
+              configured.event_log == "/tmp/events.jsonl" &&
+              configured.event_cooldown_ms == 1500 && configured.event_max_missed == 4 &&
               configured.audio_source == "hands-free" && configured.audio_period_ms == 40,
           "numeric command-line settings are parsed");
 
@@ -134,6 +141,10 @@ void test_config_parsing_and_validation() {
                    "RGA OSD region capacity is enforced");
     expect_invalid([] { parse({"--rtsp-client-buffer-kb", "64"}); },
                    "too-small RTSP client buffers are rejected");
+    expect_invalid([] { parse({"--analytics-rules", "/tmp/rules"}); },
+                   "analytics rules require an event log");
+    expect_invalid([] { parse({"--event-cooldown-ms", "600001"}); },
+                   "analytics cooldown is bounded");
     expect_invalid([] { parse({"--bitrate", "999999999999999999999"}); },
                    "integer overflow is rejected");
 }

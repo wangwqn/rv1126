@@ -59,6 +59,12 @@ struct Config {
     // Optional per-sample trace. A dedicated writer thread drains a bounded
     // queue so storage latency never blocks a video or inference thread.
     std::string latency_csv;
+    // Optional normalized region/line rules and asynchronous JSONL event sink.
+    // Empty paths keep analytics disabled for direct command-line users.
+    std::string analytics_rules;
+    std::string event_log;
+    int event_cooldown_ms = 2000;
+    int event_max_missed = 3;
     std::string iq_dir = "/etc/iqfiles";
     std::string model = "objects.rknn", metadata = "objects.json", labels = "labels.png";
 
@@ -95,6 +101,8 @@ struct Config {
             result_ttl_ms < 1 || result_ttl_ms > 10000 || stall_timeout_ms < 1000 ||
             stall_timeout_ms > 60000 || ai_delay_ms < 0 || ai_delay_ms > 5000 ||
             max_osd_boxes < 1 || max_osd_boxes > 8 ||
+            event_cooldown_ms < 0 || event_cooldown_ms > 600000 ||
+            event_max_missed < 0 || event_max_missed > 30 ||
             !std::isfinite(threshold) || threshold <= 0 || threshold > 1 || camera < 0 || camera > 7)
             throw std::invalid_argument("invalid rate, port, timeout, confidence or camera setting");
         if (main_node.empty() || sub_node.empty() || main_node == sub_node ||
@@ -104,6 +112,9 @@ struct Config {
             sensor_mode != "4k-ispp-1080" && sensor_mode != "current")
             throw std::invalid_argument(
                 "sensor-mode must be 1080p, 4k, 4k-ispp-1080 or current");
+        if (analytics_rules.empty() != event_log.empty())
+            throw std::invalid_argument(
+                "analytics-rules and event-log must be configured together");
         if (sensor_mode == "4k-ispp-1080" &&
             (iq_dir.empty() || width != 1920 || height != 1080 ||
              sub_width != 640 || sub_height != 360 || fps != 30))
@@ -150,6 +161,8 @@ inline Config parse_config(int argc, char** argv) {
             c.latency_csv = value;
             c.latency_stats = true;
         }
+        else if (key == "--analytics-rules") c.analytics_rules = value;
+        else if (key == "--event-log") c.event_log = value;
         else if (key == "--threshold") {
             size_t end = 0;
             c.threshold = std::stof(value, &end);
@@ -176,6 +189,8 @@ inline Config parse_config(int argc, char** argv) {
         else if (key == "--stall-timeout-ms") c.stall_timeout_ms = parse_integer(value);
         else if (key == "--ai-delay-ms") c.ai_delay_ms = parse_integer(value);
         else if (key == "--max-osd-boxes") c.max_osd_boxes = parse_integer(value);
+        else if (key == "--event-cooldown-ms") c.event_cooldown_ms = parse_integer(value);
+        else if (key == "--event-max-missed") c.event_max_missed = parse_integer(value);
         else throw std::invalid_argument("unknown option: " + key);
     }
     c.validate();
@@ -201,6 +216,8 @@ inline void print_usage(std::ostream& out) {
            "  --latency-stats (rolling P50/P95/P99/max stage latency)\n"
            "  --dma-audit (DMA-BUF leases/FDs, CPU mappings and wait percentiles)\n"
            "  --latency-csv /tmp/latency.csv (asynchronous per-sample trace)\n"
+           "  --analytics-rules analytics.rules --event-log events/events.jsonl\n"
+           "  --event-cooldown-ms 2000 --event-max-missed 3\n"
            "  --no-ai --no-osd --no-audio --no-isp --ai-delay-ms 0 --help\n"
            "NV12 dimensions must be even; nodes must share the same FOV.\n"
            "Paths: /live/main_stream and /live/sub_stream\n";

@@ -340,6 +340,10 @@ start_service() {
     validate_watchdog_settings
     [ -x "$APP" ] || { echo "Missing executable: $APP" >&2; return 1; }
     [ -s "$APP_DIR/objects.rknn" ] || { echo "Missing model: $APP_DIR/objects.rknn" >&2; return 1; }
+    # Direct release deployments do not pass through the OTA manager, which
+    # normally creates persistent state directories.  Keep both installation
+    # paths equivalent before the asynchronous analytics writer starts.
+    mkdir -p "$APP_DIR/events"
     if [ "$#" -eq 0 ]; then
         if [ -s "$RUNTIME_ARGS_FILE" ]; then
             set -- $(load_runtime_args)

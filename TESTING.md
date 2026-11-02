@@ -68,6 +68,19 @@ python3 -m unittest discover -s deploy/ota/tests -v
 数据应仍存在。“立即应用”和“切换模型”会重启 RTSP，只在允许
 中断推流的验收时段执行。
 
+区域/越线事件验收：在Web绘制一个区域和一条线，保存并重启媒体管线，使用同一目标
+按“区域外→区域内→跨线→区域外”连续移动。事件页应依次出现进入、越线和离开，且
+类别、规则名、方向、轨迹ID和置信度完整。检查：
+
+```bash
+adb shell 'tail -20 /root/rv1126_objects/events/events.jsonl'
+adb shell 'grep "events(" /tmp/rv1126-object.log | tail -1'
+```
+
+要求 `generated == written`、`dropped=0`、`write_error=0`。同一目标在规则边缘轻微
+抖动时，2秒内不得重复刷出相同事件。算法限制和方向定义见
+`deploy/pipeline/docs/analytics-events.md`。
+
 DMA-BUF运行时验收：
 
 ```bash

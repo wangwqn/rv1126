@@ -94,6 +94,7 @@ class ManagementState:
         self.runtime_config = self.root / "runtime-config.json"
         self.runtime_args = self.root / "runtime.args"
         self.events_file = self.root / "events" / "events.jsonl"
+        self.analytics_rules = self.root / "analytics.rules"
         default_model_root = (Path("/root/rv1126_models")
                               if self.root == Path("/root/rv1126_objects")
                               else self.root.parent / "rv1126_models")
@@ -268,6 +269,9 @@ class ManagementState:
                                   result["x"] + result["width"] > 1.000001 or
                                   result["y"] + result["height"] > 1.000001):
             raise ValueError("region must fit normalized video coordinates")
+        if kind == "line" and ((result["x2"] - result["x1"]) ** 2 +
+                                (result["y2"] - result["y1"]) ** 2) ** 0.5 < 0.01:
+            raise ValueError("line endpoints must be distinct")
         return result
 
     @classmethod
@@ -330,8 +334,24 @@ class ManagementState:
             "--rtsp-client-buffer-kb", str(media["rtsp_client_buffer_kb"]),
             "--audio-device", "plughw:0,0", "--audio-source", "main",
             "--audio-period-ms", "20", "--dma-audit",
+            "--analytics-rules", str(self.analytics_rules),
+            "--event-log", str(self.events_file),
+            "--event-cooldown-ms", "2000", "--event-max-missed", "3",
         ]
         return arguments + self._model_arguments()
+
+    @staticmethod
+    def analytics_rules_text(config):
+        lines = ["# rv1126 analytics rules schema=1"]
+        for region in config["analytics"]["regions"]:
+            name = region["name"].encode("utf-8").hex()
+            lines.append("region {} {:.8f} {:.8f} {:.8f} {:.8f}".format(
+                name, region["x"], region["y"], region["width"], region["height"]))
+        for rule in config["analytics"]["lines"]:
+            name = rule["name"].encode("utf-8").hex()
+            lines.append("line {} {:.8f} {:.8f} {:.8f} {:.8f}".format(
+                name, rule["x1"], rule["y1"], rule["x2"], rule["y2"]))
+        return "\n".join(lines) + "\n"
 
     def save_config(self, payload):
         apply_now = bool(payload.get("apply", False)) if isinstance(payload, dict) else False
@@ -340,11 +360,14 @@ class ManagementState:
         validated = self.validate_config(candidate)
         encoded = json.dumps(validated, ensure_ascii=False, indent=2) + "\n"
         args_encoded = "\n".join(self.arguments(validated)) + "\n"
+        rules_encoded = self.analytics_rules_text(validated)
         with self.lock:
             old_config = self.runtime_config.read_bytes() if self.runtime_config.exists() else None
             old_args = self.runtime_args.read_bytes() if self.runtime_args.exists() else None
+            old_rules = self.analytics_rules.read_bytes() if self.analytics_rules.exists() else None
             atomic_write(self.runtime_config, encoded)
             atomic_write(self.runtime_args, args_encoded)
+            atomic_write(self.analytics_rules, rules_encoded)
             if apply_now:
                 try:
                     self.run_controller("restart", timeout=90)
@@ -358,6 +381,10 @@ class ManagementState:
                         self.runtime_args.unlink(missing_ok=True)
                     else:
                         atomic_write(self.runtime_args, old_args)
+                    if old_rules is None:
+                        self.analytics_rules.unlink(missing_ok=True)
+                    else:
+                        atomic_write(self.analytics_rules, old_rules)
                     try:
                         self.run_controller("restart", timeout=90)
                         self.wait_controller_health()
@@ -503,8 +530,7 @@ class ManagementState:
             return 0.0
         return round(100.0 * (process - previous[1]) / (total - previous[2]), 2)
 
-    def _latest_video(self):
-        path = Path("/tmp/rv1126-object.log")
+    def _latest_video(self, path=Path("/tmp/rv1126-object.log")):
         try:
             with path.open("rb") as handle:
                 handle.seek(max(0, path.stat().st_size - 256 * 1024))
@@ -518,6 +544,11 @@ class ManagementState:
             "sub_pts_gap": r"sub\(venc=\d+, pts_gap=(\d+)",
             "ai_completed": r"completed=(\d+)", "osd_boxes": r"osd\(boxes=(\d+)",
             "audio_sent": r"audio\(captured=\d+, sent=(\d+)",
+            "event_generated": r"events\(processed=\d+, generated=(\d+)",
+            "event_written": r"events\(processed=\d+, generated=\d+, written=(\d+)",
+            "event_dropped": r"events\([^)]*dropped=(\d+)",
+            "event_write_errors": r"events\([^)]*write_error=(\d+)",
+            "event_tracks": r"events\([^)]*tracks=(\d+)",
         }
         result = {"raw": line}
         for name, pattern in patterns.items():

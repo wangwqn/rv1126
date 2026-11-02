@@ -35,7 +35,8 @@ MAX_EXPANDED_BYTES = 128 * 1024 * 1024
 RSA_SHA256_PREFIX = bytes.fromhex("3031300d060960864801650304020105000420")
 SAFE_PATH = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/-]*$")
 VERSION_PATTERN = re.compile(r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$")
-PERSISTENT_FILES = ("runtime.args", "runtime-config.json", "web.token", "audit.jsonl")
+PERSISTENT_FILES = ("runtime.args", "runtime-config.json", "analytics.rules",
+                    "web.token", "audit.jsonl")
 PERSISTENT_DIRS = ("events", "recordings", "screenshots")
 CHANNELS = ("stable", "beta", "development")
 CHANNEL_ACCEPTS = {

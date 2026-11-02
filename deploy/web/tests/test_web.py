@@ -62,10 +62,23 @@ class WebApiTest(unittest.TestCase):
         arguments = self.state.runtime_args.read_text().splitlines()
         self.assertEqual(arguments[arguments.index("--bitrate") + 1], "5000000")
         self.assertEqual(arguments[arguments.index("--gop") + 1], "60")
+        self.assertEqual(arguments[arguments.index("--analytics-rules") + 1],
+                         str(self.state.analytics_rules))
+        rules = self.state.analytics_rules.read_text(encoding="utf-8")
+        self.assertIn("region 6465736b 0.10000000 0.20000000 0.30000000 0.40000000", rules)
 
     def test_invalid_configuration_is_rejected(self):
         payload = self.state.defaults()
         payload["media"]["gop"] = 0
+        with self.assertRaises(urllib.error.HTTPError) as context:
+            self.request("/api/config", "POST", json.dumps(payload).encode())
+        self.assertEqual(context.exception.code, 400)
+
+    def test_degenerate_analytics_line_is_rejected(self):
+        payload = self.state.defaults()
+        payload["analytics"]["lines"] = [
+            {"name": "bad", "x1": 0.5, "y1": 0.5, "x2": 0.5, "y2": 0.5}
+        ]
         with self.assertRaises(urllib.error.HTTPError) as context:
             self.request("/api/config", "POST", json.dumps(payload).encode())
         self.assertEqual(context.exception.code, 400)
@@ -115,6 +128,22 @@ class WebApiTest(unittest.TestCase):
         self.assertEqual(metrics["dma_kernel_objects"], 52)
         self.assertEqual(metrics["dma_missing_fds"], 80)
         self.assertEqual(metrics["dma_required_fd_errors"], 0)
+
+    def test_event_metrics_parse_latest_pipeline_summary(self):
+        log = self.root / "events.log"
+        log.write_text(
+            "video main(venc=300, pts_gap=0, pts_reset=0) sub(venc=300, pts_gap=0, "
+            "pts_reset=0) ai(source=30, sampled=30, completed=30, stale_drop=0) "
+            "osd(boxes=2, truncated=0) rtsp(sent=600, queue_high_water=2/8, "
+            "shutdown_abandoned=0) audio(captured=500, sent=500, queue_drop=0, "
+            "recoveries=0) events(processed=30, generated=3, written=3, dropped=0, "
+            "write_error=0, tracks=2, regions=1, lines=1)\n", encoding="utf-8")
+        metrics = self.state._latest_video(log)
+        self.assertEqual(metrics["event_generated"], 3)
+        self.assertEqual(metrics["event_written"], 3)
+        self.assertEqual(metrics["event_dropped"], 0)
+        self.assertEqual(metrics["event_write_errors"], 0)
+        self.assertEqual(metrics["event_tracks"], 2)
 
     def test_health_wait_retries_during_media_warmup(self):
         attempts = []

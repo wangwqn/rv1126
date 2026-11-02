@@ -79,7 +79,7 @@
           <div class="section-title"><div><p class="eyebrow">NORMALIZED COORDINATES</p><h3>规则绘制板</h3></div></div>
           <div class="draw-tools"><button data-tool="region" class="active">画区域</button><button data-tool="line">画越线</button><button id="clear-shapes" class="ghost">清空</button></div>
           <canvas id="rule-canvas" width="960" height="540"></canvas>
-          <p class="notice">当前版本完成区域/越线的绘制、归一化坐标与持久化；基于跟踪 ID 的事件判定引擎尚未接入。</p>
+          <p class="notice">规则使用旋转后画面的归一化坐标。保存后需重启媒体管线生效；事件引擎采用轻量同类别轨迹，支持区域进入/离开、越线方向、2秒去抖和异步持久化。</p>
         </article>
         <article class="panel">
           <div class="section-title"><div><p class="eyebrow">RULE SET</p><h3>已定义规则</h3></div></div>

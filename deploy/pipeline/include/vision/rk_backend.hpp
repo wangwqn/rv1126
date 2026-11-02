@@ -138,6 +138,7 @@ public:
     explicit ObjectDetector(const Config& config);
     ~ObjectDetector();
     Detection infer(const Frame& frame);
+    const std::vector<std::string>& names() const { return model_.names(); }
 private:
     object_detection::Model model_;
 };
