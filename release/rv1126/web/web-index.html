@@ -130,7 +130,7 @@
             <button id="apply-ota" class="danger">切换版本</button>
             <button id="rollback-ota" class="ghost">回滚</button>
           </div>
-          <p class="notice">仅接受匹配设备型号、通过 RSA-3072 签名且序号高于当前版本的完整包。切换后60秒健康检查失败会自动回滚。</p>
+          <p class="notice">接受完整包及签名的应用、模型、Web文件级差分包；同时校验设备、通道、依赖、密钥吊销状态和单调序号。切换后60秒健康检查失败会自动回滚，连续失败达到策略上限将锁定OTA并要求板端人工解锁。</p>
         </article>
       </div>
       <article class="panel">

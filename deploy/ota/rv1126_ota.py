@@ -28,6 +28,7 @@ from pathlib import Path
 PRODUCT = "rv1126-vision"
 DEVICE_MODEL = "ATK-DLRV1126"
 ARCHITECTURE = "armv7l"
+OTA_RUNTIME_VERSION = "2.0.0"
 MAX_BUNDLE_BYTES = 128 * 1024 * 1024
 MAX_FILES = 64
 MAX_EXPANDED_BYTES = 128 * 1024 * 1024
@@ -36,6 +37,20 @@ SAFE_PATH = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/-]*$")
 VERSION_PATTERN = re.compile(r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$")
 PERSISTENT_FILES = ("runtime.args", "runtime-config.json", "web.token", "audit.jsonl")
 PERSISTENT_DIRS = ("events", "recordings", "screenshots")
+CHANNELS = ("stable", "beta", "development")
+CHANNEL_ACCEPTS = {
+    "stable": {"stable"},
+    "beta": {"stable", "beta"},
+    "development": set(CHANNELS),
+}
+COMPONENTS = ("full", "application", "model", "web")
+COMPONENT_PATHS = {
+    "model": {"objects.rknn", "objects.json", "labels.png"},
+    "web": {"rv1126-web", "rv1126-web.py", "web-index.html",
+            "web-app.js", "web-styles.css"},
+    "application": {"object_image", "rv1126-object",
+                    "rkmedia_object_detection_rtsp", "GIT_COMMIT"},
+}
 
 
 class OTAError(RuntimeError):
@@ -103,6 +118,18 @@ def version_sequence(value):
     return major * 1000000 + minor * 1000 + patch
 
 
+def validate_timestamp(value, field="timestamp"):
+    value = str(value)
+    try:
+        parsed = time.strptime(value, "%Y-%m-%dT%H:%M:%SZ")
+    except (TypeError, ValueError):
+        raise OTAError("invalid {}: {}".format(field, value))
+    # Refuse obviously incorrect release dates while allowing reproducible old builds.
+    if parsed.tm_year < 2024 or parsed.tm_year > 2100:
+        raise OTAError("invalid {}: {}".format(field, value))
+    return value
+
+
 def safe_relative_path(value):
     value = str(value)
     if not SAFE_PATH.fullmatch(value) or value.startswith("/"):
@@ -111,6 +138,12 @@ def safe_relative_path(value):
     if any(item in ("", ".", "..") for item in parts):
         raise OTAError("unsafe OTA path: {}".format(value))
     return value
+
+
+def component_path_allowed(component, path):
+    if component == "full":
+        return True
+    return path in COMPONENT_PATHS.get(component, set())
 
 
 def load_public_key(path):
@@ -164,6 +197,48 @@ class OTAManager:
         self.active_file = self.state / "active.json"
         self.transaction_file = self.state / "transaction.json"
         self.history_file = self.state / "history.jsonl"
+        self.revocations_file = self.state / "revocations.json"
+        self.policy_file = self.state / "policy.json"
+        self.failure_file = self.state / "failure-state.json"
+        self.release_state_file = self.state / "release-state.json"
+
+    def _policy(self):
+        policy = read_json(self.policy_file, {}) or {}
+        if not isinstance(policy, dict):
+            policy = {}
+        channel = str(policy.get("channel", "stable"))
+        if channel not in CHANNELS:
+            channel = "stable"
+        def integer(name, default, minimum, maximum):
+            try:
+                return max(minimum, min(int(policy.get(name, default)), maximum))
+            except (TypeError, ValueError):
+                return default
+        def number(name, default, minimum, maximum):
+            try:
+                return max(minimum, min(float(policy.get(name, default)), maximum))
+            except (TypeError, ValueError):
+                return default
+        return {
+            "channel": channel,
+            "max_failures": integer("max_failures", 3, 1, 10),
+            "min_free_bytes": integer("min_free_bytes", 64 * 1024 * 1024,
+                                      16 * 1024 * 1024, 2 * 1024 * 1024 * 1024),
+            "max_load_per_cpu": number("max_load_per_cpu", 1.5, 0.5, 8.0),
+            "stage_write_mbps": number("stage_write_mbps", 8.0, 1.0, 64.0),
+        }
+
+    def _revocations(self):
+        value = read_json(self.revocations_file, {}) or {}
+        return value if isinstance(value, dict) else {}
+
+    def _failure_state(self):
+        value = read_json(self.failure_file, {}) or {}
+        if not isinstance(value, dict):
+            value = {}
+        value.setdefault("consecutive", 0)
+        value.setdefault("locked", False)
+        return value
 
     def prepare(self):
         for path in (self.state, self.keys, self.incoming, self.persistent, self.releases):
@@ -200,6 +275,119 @@ class OTAManager:
                 pass
         return result
 
+    def install_key(self, source):
+        with self.locked():
+            key, _modulus, _exponent = load_public_key(source)
+            key_id = str(key.get("key_id", ""))
+            if not re.fullmatch(r"[A-Za-z0-9._-]{8,64}", key_id):
+                raise OTAError("invalid OTA key id")
+            target = self.keys / (key_id + ".json")
+            if target.exists() and canonical_json(read_json(target)) != canonical_json(key):
+                raise OTAError("a different public key already uses this key id")
+            atomic_write(target, canonical_json(key), 0o644)
+            self._history("key_install", "success", key_id=key_id)
+            return {"installed": True, "key_id": key_id}
+
+    def revoke_key(self, key_id, reason):
+        with self.locked():
+            if not re.fullmatch(r"[A-Za-z0-9._-]{8,64}", str(key_id)):
+                raise OTAError("invalid OTA key id")
+            if not (self.keys / (str(key_id) + ".json")).is_file():
+                raise OTAError("trusted key does not exist")
+            reason = str(reason).strip()
+            if not reason or len(reason) > 256:
+                raise OTAError("key revocation reason is required")
+            values = self._revocations()
+            values[str(key_id)] = {"revoked_at": utc_timestamp(), "reason": reason}
+            atomic_json(self.revocations_file, values, 0o600)
+            self._history("key_revoke", "success", key_id=str(key_id), reason=reason)
+            return {"revoked": True, "key_id": str(key_id)}
+
+    def unrevoke_key(self, key_id):
+        with self.locked():
+            values = self._revocations()
+            if str(key_id) not in values:
+                raise OTAError("key is not revoked")
+            del values[str(key_id)]
+            atomic_json(self.revocations_file, values, 0o600)
+            self._history("key_unrevoke", "success", key_id=str(key_id))
+            return {"unrevoked": True, "key_id": str(key_id)}
+
+    def _record_apply_failure(self, reason):
+        state = self._failure_state()
+        try:
+            consecutive = int(state.get("consecutive", 0))
+        except (TypeError, ValueError):
+            consecutive = 0
+        state["consecutive"] = consecutive + 1
+        state["last_failure_at"] = utc_timestamp()
+        state["last_reason"] = str(reason)[:1024]
+        if state["consecutive"] >= self._policy()["max_failures"]:
+            state["locked"] = True
+            state["locked_at"] = utc_timestamp()
+        atomic_json(self.failure_file, state, 0o600)
+        self._history("failure_guard", "locked" if state["locked"] else "failure",
+                      consecutive=state["consecutive"], reason=str(reason))
+
+    def _clear_apply_failures(self):
+        state = {"consecutive": 0, "locked": False,
+                 "last_success_at": utc_timestamp()}
+        atomic_json(self.failure_file, state, 0o600)
+
+    def unlock(self):
+        with self.locked():
+            previous = self._failure_state()
+            self._clear_apply_failures()
+            self._history("failure_guard", "unlocked",
+                          previous_failures=int(previous.get("consecutive", 0)))
+            return {"unlocked": True}
+
+    def set_channel(self, channel):
+        with self.locked():
+            if channel not in CHANNELS:
+                raise OTAError("invalid OTA release channel")
+            current = read_json(self.policy_file, {}) or {}
+            if not isinstance(current, dict):
+                current = {}
+            current["channel"] = channel
+            atomic_json(self.policy_file, current, 0o600)
+            self._history("policy", "channel_changed", channel=channel)
+            return {"channel": channel}
+
+    def _ensure_apply_allowed(self):
+        failure = self._failure_state()
+        if failure.get("locked"):
+            raise OTAError("OTA is locked after repeated failures; local unlock is required")
+
+    def _release_states(self):
+        value = read_json(self.release_state_file, {}) or {}
+        return value if isinstance(value, dict) else {}
+
+    def _mark_release(self, release, status, **extra):
+        release = str(Path(release).resolve())
+        values = self._release_states()
+        record = values.get(release, {}) if isinstance(values.get(release), dict) else {}
+        record.update({"status": status, "updated_at": utc_timestamp()})
+        if status == "verified":
+            record["verified_at"] = utc_timestamp()
+        record.update(extra)
+        values[release] = record
+        atomic_json(self.release_state_file, values, 0o600)
+
+    def _resource_guard(self, required_bytes=0):
+        policy = self._policy()
+        usage = shutil.disk_usage(str(self.releases))
+        required = int(required_bytes) + policy["min_free_bytes"]
+        if usage.free < required:
+            raise OTAError("insufficient free storage for OTA staging")
+        try:
+            load = os.getloadavg()[0]
+            cpus = max(1, os.cpu_count() or 1)
+            if load / cpus > policy["max_load_per_cpu"]:
+                raise OTAError("system load is too high for OTA staging")
+        except (AttributeError, OSError):
+            pass
+
     def _current_version(self):
         try:
             return (self.current / "VERSION").read_text(encoding="utf-8").strip()
@@ -211,7 +399,7 @@ class OTAManager:
         return int(active.get("highest_sequence", version_sequence(self._current_version())))
 
     def _validate_manifest(self, manifest, enforce_upgrade=True):
-        if not isinstance(manifest, dict) or manifest.get("schema") != 1:
+        if not isinstance(manifest, dict) or manifest.get("schema") not in (1, 2):
             raise OTAError("unsupported OTA manifest schema")
         required = ("product", "device_model", "architecture", "version", "sequence",
                     "min_version", "key_id", "files")
@@ -239,6 +427,58 @@ class OTAManager:
         key_id = str(manifest["key_id"])
         if not re.fullmatch(r"[A-Za-z0-9._-]{8,64}", key_id):
             raise OTAError("invalid OTA key id")
+        if key_id in self._revocations():
+            raise OTAError("OTA signing key is revoked")
+        schema = int(manifest["schema"])
+        component = "full"
+        remove = []
+        if schema == 2:
+            required_v2 = ("published_at", "channel", "component", "package_type",
+                           "dependencies", "remove")
+            missing_v2 = [name for name in required_v2 if name not in manifest]
+            if missing_v2:
+                raise OTAError("manifest fields missing: " + ", ".join(missing_v2))
+            validate_timestamp(manifest["published_at"], "published_at")
+            channel = str(manifest["channel"])
+            if channel not in CHANNELS:
+                raise OTAError("invalid OTA release channel")
+            if channel not in CHANNEL_ACCEPTS[self._policy()["channel"]]:
+                raise OTAError("OTA release channel is not accepted by device policy")
+            component = str(manifest["component"])
+            if component not in COMPONENTS:
+                raise OTAError("invalid OTA component")
+            package_type = str(manifest["package_type"])
+            if package_type not in ("full", "overlay"):
+                raise OTAError("invalid OTA package type")
+            if component != "full" and package_type != "overlay":
+                raise OTAError("component OTA must use overlay package type")
+            if package_type == "overlay":
+                parse_version(manifest.get("base_version"))
+                if manifest["base_version"] != self._current_version():
+                    raise OTAError("OTA overlay base version mismatch")
+            dependencies = manifest["dependencies"]
+            if not isinstance(dependencies, dict) or len(dependencies) > 32:
+                raise OTAError("invalid OTA dependencies")
+            available = {"ota-runtime": OTA_RUNTIME_VERSION,
+                         "application": self._current_version()}
+            configured = read_json(self.state / "dependencies.json", {}) or {}
+            if isinstance(configured, dict):
+                available.update({str(k): str(v) for k, v in configured.items()})
+            for name, minimum in dependencies.items():
+                if not re.fullmatch(r"[A-Za-z0-9._-]{1,64}", str(name)):
+                    raise OTAError("invalid OTA dependency name")
+                parse_version(minimum)
+                if name not in available or parse_version(available[name]) < parse_version(minimum):
+                    raise OTAError("OTA dependency is not satisfied: " + str(name))
+            remove = manifest["remove"]
+            if not isinstance(remove, list) or len(remove) > MAX_FILES:
+                raise OTAError("invalid OTA remove list")
+            remove = [safe_relative_path(path) for path in remove]
+            if len(set(remove)) != len(remove):
+                raise OTAError("duplicate OTA remove path")
+            for path in remove:
+                if not component_path_allowed(component, path):
+                    raise OTAError("path is outside OTA component: " + path)
         files = manifest["files"]
         if not isinstance(files, list) or not files or len(files) > MAX_FILES:
             raise OTAError("invalid OTA file list")
@@ -248,6 +488,10 @@ class OTAManager:
             if not isinstance(entry, dict):
                 raise OTAError("invalid OTA file entry")
             path = safe_relative_path(entry.get("path", ""))
+            if not component_path_allowed(component, path):
+                raise OTAError("path is outside OTA component: " + path)
+            if path in remove:
+                raise OTAError("OTA path cannot be both replaced and removed: " + path)
             if path in seen:
                 raise OTAError("duplicate OTA file: " + path)
             seen.add(path)
@@ -313,6 +557,14 @@ class OTAManager:
             trusted_key, _modulus, _exponent = load_public_key(key_path)
             if trusted_key.get("key_id") != manifest["key_id"]:
                 raise OTAError("trusted key id mismatch")
+            if manifest.get("schema") == 2:
+                published = manifest["published_at"]
+                if trusted_key.get("valid_from") and published < validate_timestamp(
+                        trusted_key["valid_from"], "key valid_from"):
+                    raise OTAError("OTA package predates signing key validity")
+                if trusted_key.get("valid_until") and published > validate_timestamp(
+                        trusted_key["valid_until"], "key valid_until"):
+                    raise OTAError("OTA package exceeds signing key validity")
             if not verify_rsa_sha256(manifest_raw, signature, key_path):
                 raise OTAError("OTA signature verification failed")
             expected = {"manifest.json", "manifest.sig"}
@@ -356,6 +608,7 @@ class OTAManager:
 
     def stage(self, bundle):
         with self.locked():
+            self._resource_guard(Path(bundle).stat().st_size * 2)
             manifest = self.verify_bundle(bundle, True)
             version = manifest["version"]
             final = self.releases / ("v" + version)
@@ -364,6 +617,20 @@ class OTAManager:
             temporary = Path(tempfile.mkdtemp(prefix=".stage-v{}-".format(version),
                                               dir=str(self.releases)))
             try:
+                overlay = manifest.get("schema") == 2 and manifest.get("package_type") == "overlay"
+                base_release = self.current.resolve() if overlay else None
+                if overlay:
+                    shutil.rmtree(temporary)
+                    shutil.copytree(str(base_release), str(temporary), symlinks=True)
+                    for relative in manifest.get("remove", []):
+                        target = temporary / relative
+                        if target.is_dir() and not target.is_symlink():
+                            shutil.rmtree(target)
+                        elif target.exists() or target.is_symlink():
+                            target.unlink()
+                rate = self._policy()["stage_write_mbps"] * 1024 * 1024
+                written = 0
+                started = time.monotonic()
                 with tarfile.open(str(bundle), "r:") as archive:
                     for entry in manifest["files"]:
                         relative = entry["path"]
@@ -377,11 +644,19 @@ class OTAManager:
                                 size += len(chunk)
                                 digest.update(chunk)
                                 output.write(chunk)
+                                written += len(chunk)
+                                delay = written / rate - (time.monotonic() - started)
+                                if delay > 0:
+                                    time.sleep(min(delay, 0.25))
                             output.flush()
                             os.fsync(output.fileno())
                         if size != int(entry["size"]) or digest.hexdigest() != entry["sha256"]:
                             raise OTAError("OTA payload digest mismatch: " + relative)
                         os.chmod(target, int(entry["mode"]))
+                if overlay:
+                    atomic_write(temporary / "VERSION", version + "\n", 0o644)
+                elif (temporary / "VERSION").read_text(encoding="utf-8").strip() != version:
+                    raise OTAError("payload VERSION does not match manifest")
                 atomic_json(temporary / "OTA_MANIFEST.json", manifest, 0o644)
                 with tarfile.open(str(bundle), "r:") as archive:
                     signature_data = archive.extractfile("manifest.sig").read()
@@ -394,8 +669,14 @@ class OTAManager:
                     "release": str(final),
                     "bundle_sha256": sha256_file(bundle),
                     "verified_at": utc_timestamp(),
+                    "component": manifest.get("component", "full"),
+                    "channel": manifest.get("channel", "legacy"),
+                    "base_release": str(base_release) if base_release else None,
                 }
                 atomic_json(self.staged_file, staged)
+                self._mark_release(final, "staged", version=version,
+                                   sequence=int(manifest["sequence"]),
+                                   component=manifest.get("component", "full"))
                 self._history("verify", "success", version=version,
                               sequence=int(manifest["sequence"]))
                 return {"verified": True, "manifest": manifest, "staged": staged}
@@ -531,6 +812,8 @@ class OTAManager:
                 "updated_at": utc_timestamp(),
             })
             atomic_json(self.active_file, active)
+            self._mark_release(current_release, "verified", version=version,
+                               sequence=version_sequence(version))
             self._run_controller("rv1126-object", "start", check=False)
             self._run_controller("rv1126-web", "start", check=False)
             health = self._wait_health(60)
@@ -577,6 +860,7 @@ class OTAManager:
 
     def apply(self):
         with self.locked():
+            self._ensure_apply_allowed()
             if not self.current.is_symlink():
                 raise OTAError("A/B layout is not bootstrapped")
             staged = read_json(self.staged_file)
@@ -586,6 +870,8 @@ class OTAManager:
             if int(manifest["sequence"]) <= self._highest_sequence():
                 raise OTAError("OTA downgrade or replay rejected")
             previous = self.current.resolve()
+            if staged.get("base_release") and Path(staged["base_release"]).resolve() != previous:
+                raise OTAError("staged overlay base release is no longer active")
             transaction = {
                 "status": "switching", "previous": str(previous),
                 "candidate": str(candidate), "version": manifest["version"],
@@ -598,11 +884,28 @@ class OTAManager:
                 self._install_boot_links()
                 transaction["status"] = "validating"
                 atomic_json(self.transaction_file, transaction)
+                # Explicit, one-shot physical power-loss test hook. It is
+                # disabled unless both a root-owned marker and an environment
+                # delay are present; normal OTA can never enter this pause.
+                test_marker = self.state / "allow-power-cut-test"
+                try:
+                    test_hold = int(os.environ.get("RV1126_OTA_POWER_CUT_HOLD_SECONDS", "0"))
+                except ValueError:
+                    test_hold = 0
+                if test_marker.is_file() and 1 <= test_hold <= 300:
+                    test_marker.unlink()
+                    self._history("power_cut_test", "armed", hold_seconds=test_hold,
+                                  version=manifest["version"])
+                    time.sleep(test_hold)
                 self._run_controller("rv1126-object", "start", check=False)
                 self._run_controller("rv1126-web", "start", check=False)
                 health = self._wait_health(60)
             except Exception as error:
-                self._rollback_after_failure(previous, candidate, str(error))
+                try:
+                    self._rollback_after_failure(previous, candidate, str(error))
+                finally:
+                    self._mark_release(candidate, "failed", reason=str(error))
+                    self._record_apply_failure(str(error))
                 raise OTAError("upgrade failed; previous release restored: {}".format(error))
             active = {
                 "current": str(candidate), "previous": str(previous),
@@ -613,6 +916,12 @@ class OTAManager:
             transaction.update({"status": "committed", "committed_at": utc_timestamp()})
             atomic_json(self.transaction_file, transaction)
             self.staged_file.unlink(missing_ok=True)
+            self._mark_release(candidate, "verified", version=manifest["version"],
+                               sequence=int(manifest["sequence"]),
+                               channel=manifest.get("channel", "legacy"),
+                               component=manifest.get("component", "full"))
+            self._mark_release(previous, "verified")
+            self._clear_apply_failures()
             self._history("apply", "success", version=manifest["version"],
                           sequence=int(manifest["sequence"]))
             self._prune_releases({candidate.resolve(), previous.resolve()})
@@ -643,6 +952,7 @@ class OTAManager:
             active.update({"current": str(previous), "previous": str(current),
                            "updated_at": utc_timestamp()})
             atomic_json(self.active_file, active)
+            self._mark_release(previous, "verified")
             atomic_json(self.transaction_file, {"status": "committed",
                         "manual_rollback": True, "committed_at": utc_timestamp()})
             self._history("rollback", "success", release=str(previous))
@@ -664,17 +974,35 @@ class OTAManager:
             active = read_json(self.active_file, {}) or {}
             active.update({"current": str(previous), "updated_at": utc_timestamp()})
             atomic_json(self.active_file, active)
+            candidate = transaction.get("candidate")
+            if candidate:
+                self._mark_release(candidate, "failed", reason="power loss during OTA")
+            self._mark_release(previous, "verified")
             self._history("recover", "success", release=str(previous))
             return {"recovered": True, "release": str(previous)}
 
     def _prune_releases(self, protected):
-        candidates = []
+        states = self._release_states()
+        verified = []
+        failed = []
         for item in self.releases.iterdir():
             if item.is_dir() and not item.name.startswith(".stage-") and item.resolve() not in protected:
-                candidates.append(item)
-        candidates.sort(key=lambda path: path.stat().st_mtime, reverse=True)
+                record = states.get(str(item.resolve()), {})
+                if record.get("status") == "verified":
+                    verified.append((record.get("verified_at", ""), item))
+                elif record.get("status") == "failed":
+                    failed.append((record.get("updated_at", ""), item))
+                # Unknown legacy directories are deliberately retained until an
+                # administrator or successful health check marks them verified.
+        verified.sort(key=lambda value: value[0], reverse=True)
+        failed.sort(key=lambda value: value[0], reverse=True)
         keep_extra = max(0, self.retain - len(protected))
-        for item in candidates[keep_extra:]:
+        for _stamp, item in verified[keep_extra:]:
+            if (item / "VERSION").is_file():
+                shutil.rmtree(item)
+        # Keep the most recent failed candidate for forensics; older failed
+        # candidates are not rollback targets and may be reclaimed.
+        for _stamp, item in failed[1:]:
             if (item / "VERSION").is_file():
                 shutil.rmtree(item)
 
@@ -696,6 +1024,11 @@ class OTAManager:
             "active": read_json(self.active_file),
             "transaction": read_json(self.transaction_file),
             "trusted_keys": sorted(path.stem for path in self.keys.glob("*.json")),
+            "revoked_keys": self._revocations(),
+            "policy": self._policy(),
+            "failure_guard": self._failure_state(),
+            "release_state": self._release_states(),
+            "ota_runtime_version": OTA_RUNTIME_VERSION,
         }
 
 
@@ -725,9 +1058,25 @@ def main():
     subparsers.add_parser("apply")
     subparsers.add_parser("rollback")
     subparsers.add_parser("recover")
+    install_key_parser = subparsers.add_parser("key-install")
+    install_key_parser.add_argument("public_key")
+    revoke_parser = subparsers.add_parser("key-revoke")
+    revoke_parser.add_argument("key_id")
+    revoke_parser.add_argument("--reason", required=True)
+    unrevoke_parser = subparsers.add_parser("key-unrevoke")
+    unrevoke_parser.add_argument("key_id")
+    unlock_parser = subparsers.add_parser("unlock")
+    unlock_parser.add_argument("--confirm", action="store_true")
+    channel_parser = subparsers.add_parser("set-channel")
+    channel_parser.add_argument("channel", choices=CHANNELS)
     arguments = parser.parse_args()
     manager = build_manager(arguments)
     try:
+        if arguments.command == "stage":
+            try:
+                os.nice(10)
+            except OSError:
+                pass
         if arguments.delay < 0 or arguments.delay > 30:
             raise OTAError("delay must be between 0 and 30 seconds")
         if arguments.delay and arguments.command in ("apply", "rollback"):
@@ -744,8 +1093,20 @@ def main():
             result = manager.apply()
         elif arguments.command == "rollback":
             result = manager.rollback()
-        else:
+        elif arguments.command == "recover":
             result = manager.recover()
+        elif arguments.command == "key-install":
+            result = manager.install_key(arguments.public_key)
+        elif arguments.command == "key-revoke":
+            result = manager.revoke_key(arguments.key_id, arguments.reason)
+        elif arguments.command == "key-unrevoke":
+            result = manager.unrevoke_key(arguments.key_id)
+        elif arguments.command == "unlock":
+            if not arguments.confirm:
+                raise OTAError("unlock requires --confirm")
+            result = manager.unlock()
+        else:
+            result = manager.set_channel(arguments.channel)
         print(json.dumps(result, ensure_ascii=False, sort_keys=True))
     except (OTAError, OSError, subprocess.TimeoutExpired, tarfile.TarError) as error:
         print(json.dumps({"error": str(error)}, ensure_ascii=False), file=sys.stderr)

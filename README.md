@@ -14,7 +14,7 @@
 ```bash
 git clone git@github.com:wangwqn/rv1126.git
 cd rv1126
-git checkout v1.12.2
+git checkout v1.13.0
 bash scripts/verify_checkout.sh
 ```
 
@@ -53,6 +53,11 @@ Nginx HTTPS。迁移后禁止ADB原地覆盖，只允许签名 `.rvota` 包。�
 的电脑使用 `https://开发板IP/`；Python Web只监听
 `127.0.0.1:8080`。管理服务支持状态/指标/配置/日志/模型，以及
 签名OTA上传、验签、原子切换和自动回滚。Web进程不参与视频帧数据路径。
+
+OTA schema 2支持stable/beta/development通道、依赖版本门禁、公钥轮换/吊销、
+应用/模型/Web独立overlay和文件级差分。连续失败达到阈值会锁定apply；版本清理只以
+持久化“已验证”状态为依据。1.13.0部署前必须先在维护窗口更新稳定OTA运行时，完整
+密钥轮换、打包、解锁和物理断电流程见 `handoff/SECURE_OTA.md`。
 
 预编译程序依赖当前板载 RKMedia、RGA、RKNN、RKAiq、ALSA 和 C/C++ 运行库 ABI；不同 BSP
 必须按本文后面的交叉编译步骤重新生成。发布包详情见 `release/rv1126/README.md`。

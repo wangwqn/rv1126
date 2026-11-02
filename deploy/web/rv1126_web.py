@@ -26,6 +26,8 @@ from pathlib import Path
 MAX_JSON = 64 * 1024
 MAX_MODEL = 64 * 1024 * 1024
 MAX_OTA = 128 * 1024 * 1024
+OTA_UPLOAD_BYTES_PER_SECOND = max(1024 * 1024, int(os.environ.get(
+    "RV1126_OTA_UPLOAD_BYTES_PER_SECOND", str(4 * 1024 * 1024))))
 AUTH_FAILURE_LIMIT = 5
 AUTH_FAILURE_WINDOW = 60
 AUTH_BLOCK_SECONDS = 300
@@ -794,9 +796,13 @@ class ManagementState:
         if length < 1 or length > MAX_OTA:
             raise ValueError("invalid OTA upload size")
         self.ota_bundle.parent.mkdir(parents=True, exist_ok=True)
+        if shutil.disk_usage(str(self.ota_bundle.parent)).free < length + 64 * 1024 * 1024:
+            raise ValueError("insufficient free storage for OTA upload")
         temporary = self.ota_bundle.with_suffix(self.ota_bundle.suffix + ".upload")
         digest = hashlib.sha256()
         remaining = length
+        received = 0
+        started = time.monotonic()
         try:
             with temporary.open("wb") as handle:
                 while remaining:
@@ -806,6 +812,10 @@ class ManagementState:
                     handle.write(chunk)
                     digest.update(chunk)
                     remaining -= len(chunk)
+                    received += len(chunk)
+                    delay = received / OTA_UPLOAD_BYTES_PER_SECOND - (time.monotonic() - started)
+                    if delay > 0:
+                        time.sleep(min(delay, 0.25))
                 handle.flush()
                 os.fsync(handle.fileno())
             actual = digest.hexdigest()

@@ -115,6 +115,39 @@ class OTATest(unittest.TestCase):
                 archive.add(payload / entry["path"], arcname="payload/" + entry["path"])
         return bundle
 
+    def _bundle_v2(self, version="1.11.0", sequence=None, component="model",
+                   channel="stable", dependencies=None, base_version="1.10.1",
+                   payload_path="objects.json", payload_data=b'{"classes":[]}\n'):
+        sequence = sequence or version_sequence(version)
+        bundle = self.base / ("v2-{}-{}.rvota".format(component, version))
+        work = self.base / ("work-v2-{}-{}".format(component, version.replace(".", "-")))
+        payload = work / "payload"
+        payload.mkdir(parents=True, exist_ok=True)
+        target = payload / payload_path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(payload_data)
+        entry = {"path": payload_path, "sha256": hashlib.sha256(payload_data).hexdigest(),
+                 "size": len(payload_data), "mode": 0o644}
+        manifest = {
+            "schema": 2, "product": "rv1126-vision", "device_model": "ATK-DLRV1126",
+            "architecture": "armv7l", "version": version, "sequence": sequence,
+            "min_version": "1.10.1", "key_id": self.key_id, "files": [entry],
+            "published_at": "2026-11-02T00:00:00Z", "created_at": "2026-11-02T00:00:00Z",
+            "channel": channel, "component": component, "package_type": "overlay",
+            "base_version": base_version, "dependencies": dependencies or {}, "remove": [],
+        }
+        manifest_path = work / "manifest.json"
+        manifest_path.write_bytes(canonical_json(manifest))
+        signature = work / "signature.raw"
+        subprocess.run(["openssl", "dgst", "-sha256", "-sign", str(self.private_key),
+                        "-out", str(signature), str(manifest_path)], check=True)
+        (work / "manifest.sig").write_bytes(base64.b64encode(signature.read_bytes()))
+        with tarfile.open(bundle, "w:") as archive:
+            archive.add(manifest_path, arcname="manifest.json")
+            archive.add(work / "manifest.sig", arcname="manifest.sig")
+            archive.add(target, arcname="payload/" + payload_path)
+        return bundle
+
     def test_valid_bundle_stages_and_applies(self):
         result = self.manager.stage(self._bundle())
         self.assertTrue(result["verified"])
@@ -171,6 +204,79 @@ class OTATest(unittest.TestCase):
             encoding="utf-8")
         os.chmod(controller, 0o755)
         self.manager._run_controller("rv1126-web", "health")
+
+    def test_model_overlay_preserves_application_and_switches_atomically(self):
+        original_controller = (self.old_release / "rv1126-object").read_bytes()
+        self.manager.stage(self._bundle_v2())
+        result = self.manager.apply()
+        self.assertTrue(result["applied"])
+        self.assertEqual((self.current / "VERSION").read_text().strip(), "1.11.0")
+        self.assertEqual((self.current / "objects.json").read_bytes(), b'{"classes":[]}\n')
+        self.assertEqual((self.current / "rv1126-object").read_bytes(), original_controller)
+
+    def test_release_channel_policy_rejects_beta_until_enabled(self):
+        bundle = self._bundle_v2(channel="beta")
+        with self.assertRaisesRegex(OTAError, "channel is not accepted"):
+            self.manager.stage(bundle)
+        self.manager.set_channel("beta")
+        self.assertTrue(self.manager.stage(bundle)["verified"])
+
+    def test_unsatisfied_dependency_is_rejected(self):
+        with self.assertRaisesRegex(OTAError, "dependency is not satisfied"):
+            self.manager.stage(self._bundle_v2(dependencies={"rkmedia": "9.9.9"}))
+
+    def test_revoked_key_is_rejected_and_can_be_restored_locally(self):
+        bundle = self._bundle_v2()
+        self.manager.revoke_key(self.key_id, "test compromise")
+        with self.assertRaisesRegex(OTAError, "signing key is revoked"):
+            self.manager.stage(bundle)
+        self.manager.unrevoke_key(self.key_id)
+        self.assertTrue(self.manager.stage(bundle)["verified"])
+
+    def test_new_public_key_can_be_installed_before_rotation(self):
+        rotated = dict(self.key)
+        rotated["key_id"] = "test-key-0002"
+        source = self.base / "rotated-key.json"
+        source.write_text(json.dumps(rotated), encoding="utf-8")
+        self.assertTrue(self.manager.install_key(source)["installed"])
+        self.assertIn("test-key-0002", self.manager.status()["trusted_keys"])
+
+    def test_component_cannot_replace_files_outside_its_scope(self):
+        with self.assertRaisesRegex(OTAError, "outside OTA component"):
+            self.manager.stage(self._bundle_v2(component="web",
+                                                payload_path="objects.json"))
+
+    def test_three_failed_applies_lock_future_upgrades(self):
+        self.manager.stage(self._bundle(broken_controller=True))
+        for _index in range(3):
+            with self.assertRaisesRegex(OTAError, "previous release restored"):
+                self.manager.apply()
+        self.assertTrue(self.manager.status()["failure_guard"]["locked"])
+        with self.assertRaisesRegex(OTAError, "locked after repeated failures"):
+            self.manager.apply()
+        self.assertTrue(self.manager.unlock()["unlocked"])
+        self.assertFalse(self.manager.status()["failure_guard"]["locked"])
+
+    def test_retention_uses_verified_state_not_directory_mtime(self):
+        releases = []
+        states = {}
+        for index, version in enumerate(("1.9.0", "1.9.1", "1.9.2")):
+            release = self.releases / ("v" + version)
+            release.mkdir()
+            self._write_release(release, version)
+            releases.append(release)
+            states[str(release.resolve())] = {
+                "status": "verified",
+                "verified_at": "2026-01-0{}T00:00:00Z".format(index + 1),
+            }
+        # Make the oldest verified release look newest by mtime; it must still
+        # be pruned because retention is based on verified_at.
+        os.utime(releases[0], (2000000000, 2000000000))
+        self.manager.release_state_file.write_text(json.dumps(states), encoding="utf-8")
+        self.manager._prune_releases({self.old_release.resolve()})
+        self.assertFalse(releases[0].exists())
+        self.assertTrue(releases[1].exists())
+        self.assertTrue(releases[2].exists())
 
 
 if __name__ == "__main__":

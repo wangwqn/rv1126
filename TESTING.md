@@ -37,7 +37,8 @@ curl --cacert "$CA_CERT" -fsS -H "Authorization: Bearer $TOKEN" "https://$BOARD_
   --private-key "$KEY_DIR/rv1126-ota-signing-private.pem" \
   --trusted-key "$KEY_DIR/<key-id>.json" \
   --min-version 1.10.1 \
-  --output /tmp/rv1126-v1.12.2.rvota
+  --channel stable \
+  --output /tmp/rv1126-v1.13.0.rvota
 ```
 
 必须分别验证：正常签名包、改动1字节的包、错误设备型号、相同序号重放、
@@ -50,6 +51,18 @@ adb shell 'cat /userdata/rv1126-ota/transaction.json'
 adb shell '/root/rv1126_objects/rv1126-object health'
 adb shell '/root/rv1126_objects/rv1126-web health'
 ```
+
+OTA schema 2还必须验证：stable/beta/development通道门禁、依赖最低版本、
+公钥轮换与吊销、full/application/model/web组件overlay、基础版本不匹配、连续三次失败
+锁定、本地解锁，以及按已验证时间保留。主机自动回归：
+
+```bash
+python3 -m unittest discover -s deploy/ota/tests -v
+```
+
+真实物理断电不能用进程kill代替。准备恢复手段后按
+`handoff/SECURE_OTA.md`执行 `scripts/test_ota_power_loss.sh`，只有事务状态为
+`power_loss_rolled_back`且冷启动后媒体/Web健康才算通过。
 
 浏览器中再保存一次“不立即应用”配置和一组区域/越线，刷新后
 数据应仍存在。“立即应用”和“切换模型”会重启 RTSP，只在允许
