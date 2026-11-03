@@ -52,6 +52,7 @@ class WebApiTest(unittest.TestCase):
     def test_config_is_validated_and_written_as_one_argument_per_line(self):
         payload = self.state.defaults()
         payload["media"].update({"bitrate": 5000000, "gop": 60, "threshold": 0.42})
+        payload["recording"].update({"max_storage_mb": 256, "event_pre_seconds": 15})
         payload["analytics"]["regions"] = [
             {"name": "desk", "x": 0.1, "y": 0.2, "width": 0.3, "height": 0.4}
         ]
@@ -59,6 +60,8 @@ class WebApiTest(unittest.TestCase):
         result = json.load(self.request("/api/config", "POST", body))
         self.assertFalse(result["applied"])
         self.assertEqual(result["config"]["media"]["gop"], 60)
+        self.assertEqual(result["config"]["recording"]["max_storage_mb"], 256)
+        self.assertEqual(result["config"]["recording"]["event_pre_seconds"], 15)
         arguments = self.state.runtime_args.read_text().splitlines()
         self.assertEqual(arguments[arguments.index("--bitrate") + 1], "5000000")
         self.assertEqual(arguments[arguments.index("--gop") + 1], "60")
@@ -70,6 +73,13 @@ class WebApiTest(unittest.TestCase):
     def test_invalid_configuration_is_rejected(self):
         payload = self.state.defaults()
         payload["media"]["gop"] = 0
+        with self.assertRaises(urllib.error.HTTPError) as context:
+            self.request("/api/config", "POST", json.dumps(payload).encode())
+        self.assertEqual(context.exception.code, 400)
+
+    def test_invalid_recording_configuration_is_rejected(self):
+        payload = self.state.defaults()
+        payload["recording"]["segment_seconds"] = 1
         with self.assertRaises(urllib.error.HTTPError) as context:
             self.request("/api/config", "POST", json.dumps(payload).encode())
         self.assertEqual(context.exception.code, 400)

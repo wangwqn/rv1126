@@ -1,0 +1,76 @@
+#!/bin/sh
+set -eu
+
+APP_DIR=${RV1126_APP_DIR:-/root/rv1126_objects}
+PROGRAM="$APP_DIR/rv1126-recording.py"
+PID_FILE=${RV1126_RECORDING_PID_FILE:-/var/run/rv1126-recording.pid}
+LOG_FILE=${RV1126_RECORDING_LOG_FILE:-/tmp/rv1126-recording.log}
+STATUS_FILE=${RV1126_RECORDING_STATUS_FILE:-/userdata/rv1126-recording/status.json}
+
+running_pid() {
+    [ -s "$PID_FILE" ] || return 1
+    pid=$(cat "$PID_FILE" 2>/dev/null || true)
+    case "$pid" in *[!0-9]*|'') return 1 ;; esac
+    [ -d "/proc/$pid" ] || return 1
+    command_line=$(tr '\000' ' ' <"/proc/$pid/cmdline" 2>/dev/null || true)
+    case "$command_line" in *"$PROGRAM"*) printf '%s\n' "$pid" ;; *) return 1 ;; esac
+}
+
+start_service() {
+    [ -s "$PROGRAM" ] || { echo "Missing recording manager: $PROGRAM" >&2; return 1; }
+    [ -x "$APP_DIR/rv1126-recorder" ] || { echo "Missing recorder: $APP_DIR/rv1126-recorder" >&2; return 1; }
+    if pid=$(running_pid); then echo "Already running: pid=$pid"; return 0; fi
+    mkdir -p /userdata/rv1126-recording "$APP_DIR/recordings"
+    : >"$LOG_FILE"
+    start-stop-daemon -S -b -m -p "$PID_FILE" -x /usr/bin/python3 -- \
+        "$PROGRAM" --root "$APP_DIR" --status "$STATUS_FILE" \
+        >>"$LOG_FILE" 2>&1
+    sleep 2
+    pid=$(running_pid) || { tail -60 "$LOG_FILE" >&2 || true; return 1; }
+    echo "Started: pid=$pid status=$STATUS_FILE"
+}
+
+stop_service() {
+    if pid=$(running_pid); then
+        kill -TERM "$pid" 2>/dev/null || true
+        count=0
+        while [ -d "/proc/$pid" ] && [ "$count" -lt 20 ]; do sleep 1; count=$((count + 1)); done
+        [ ! -d "/proc/$pid" ] || kill -KILL "$pid" 2>/dev/null || true
+    fi
+    rm -f "$PID_FILE"
+    echo "Stopped"
+}
+
+case "${1:-}" in
+    start) start_service ;;
+    stop) stop_service ;;
+    restart) stop_service; start_service ;;
+    status)
+        if pid=$(running_pid); then echo "Running: pid=$pid"; else echo "Stopped"; fi
+        [ ! -s "$STATUS_FILE" ] || cat "$STATUS_FILE"
+        ;;
+    health)
+        pid=$(running_pid) || { echo "Unhealthy: manager is not running"; exit 1; }
+        python3 - "$STATUS_FILE" <<'PY'
+import json, sys, time
+try:
+    value = json.load(open(sys.argv[1], encoding="utf-8"))
+except Exception as error:
+    print("Unhealthy: cannot read status: {}".format(error))
+    raise SystemExit(1)
+if not value.get("enabled"):
+    print("Healthy: recording is administratively disabled")
+elif (value.get("ok") and value.get("recorder_pid") and
+      time.time() - int(value.get("updated_at", 0)) < 15):
+    print("Healthy: recorder_pid={} segments={} bytes={} events={} restarts={}".format(
+        value["recorder_pid"], value.get("segments", 0),
+        value.get("continuous_bytes", 0), value.get("event_files", 0),
+        value.get("restart_count", 0)))
+else:
+    print("Unhealthy: {}".format(value.get("last_error") or "no completed segment"))
+    raise SystemExit(1)
+PY
+        ;;
+    log) tail -100 "$LOG_FILE" /tmp/rv1126-recorder.log 2>/dev/null || true ;;
+    *) echo "Usage: $0 {start|stop|restart|status|health|log}" >&2; exit 2 ;;
+esac

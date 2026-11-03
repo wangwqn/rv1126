@@ -66,6 +66,15 @@
         <label>检测结果有效期 (ms)<input name="result_ttl_ms" type="number" min="100" max="10000"></label>
         <label>最大 OSD 框数<input name="max_osd_boxes" type="number" min="1" max="8"></label>
         <label>RTSP TCP 客户端缓冲 (KiB)<input name="rtsp_client_buffer_kb" type="number" min="128" max="4096"></label>
+        <div class="section-title wide"><div><p class="eyebrow">BOUNDED RECORDING</p><h3>自动录像与事件回溯</h3></div><span class="muted">H.264不重编码，MKV循环分段</span></div>
+        <label class="check"><input id="recording-enabled" type="checkbox">开启自动录像</label>
+        <label>分段时长 (秒)<input name="recording_segment_seconds" type="number" min="5" max="600"></label>
+        <label>连续录像上限 (MiB)<input name="recording_max_storage_mb" type="number" min="64" max="8192"></label>
+        <label>最小保留空间 (MiB)<input name="recording_min_free_mb" type="number" min="32" max="4096"></label>
+        <label>事件前保留 (秒)<input name="recording_event_pre_seconds" type="number" min="0" max="120"></label>
+        <label>事件后保留 (秒)<input name="recording_event_post_seconds" type="number" min="0" max="300"></label>
+        <label>事件录像上限 (MiB)<input name="recording_event_storage_mb" type="number" min="32" max="4096"></label>
+        <p class="notice wide">录像服务独立于媒体管线；磁盘慢或服务重启不会阻塞RTSP。事件录像以硬链接保留前后分段，连续录像超限时仅删除最旧分段。</p>
         <div class="wide form-actions">
           <label class="check"><input id="apply-now" type="checkbox"> 保存后立即重启并应用</label>
           <button type="submit">保存配置</button>

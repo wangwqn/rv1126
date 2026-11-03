@@ -44,6 +44,7 @@ function render() {
     metric("FD", m.fd_count ?? "--", "个"), metric("MAIN VENC", m.main_venc ?? "--", "frames"),
     metric("SUB VENC", m.sub_venc ?? "--", "frames"), metric("AI", m.ai_completed ?? "--", "inferences"),
     metric("OSD", m.osd_boxes ?? "--", "boxes"), metric("EVENTS", m.event_generated ?? "--", "generated"),
+    metric("RECORDING", m.recording_segments ?? "--", "segments", m.recording_ok ? "healthy" : "inactive"),
     metric("AUDIO", m.audio_sent ?? "--", "packets"),
     metric("ISPP ERR", m.errcnt ?? "--", "count")
   ].join("");
@@ -52,7 +53,7 @@ function render() {
     const url = `rtsp://${address}:${s.rtsp?.port || 8554}${s.rtsp?.[name] || `/live/${name}_stream`}`;
     return `<div class="stream"><div><p class="eyebrow">${name.toUpperCase()}</p><code>${url}</code></div><button class="ghost copy" data-value="${url}">复制</button></div>`;
   }).join("");
-  $("#health-list").innerHTML = [["看门狗 PID",s.watchdog_pid||"--"],["看门狗重启",s.watchdog_restarts||0],["主流 PTS 缺口",m.main_pts_gap||0],["子流 PTS 缺口",m.sub_pts_gap||0],["背压恢复",m.backpressure_recoveries||0],["RKISPP 错误",m.errcnt||0]].map(x=>`<span>${x[0]}</span><strong>${x[1]}</strong>`).join("");
+  $("#health-list").innerHTML = [["看门狗 PID",s.watchdog_pid||"--"],["看门狗重启",s.watchdog_restarts||0],["主流 PTS 缺口",m.main_pts_gap||0],["子流 PTS 缺口",m.sub_pts_gap||0],["背压恢复",m.backpressure_recoveries||0],["录像重启",m.recording_restart_count||0],["事件录像",m.recording_event_files||0],["RKISPP 错误",m.errcnt||0]].map(x=>`<span>${x[0]}</span><strong>${x[1]}</strong>`).join("");
   $$(".copy").forEach(b => b.onclick = () => navigator.clipboard.writeText(b.dataset.value).then(()=>toast("已复制 RTSP 地址")));
 }
 
@@ -69,6 +70,9 @@ async function refreshAll() {
 function fillConfig() {
   const media = state.config?.media || {};
   Object.entries(media).forEach(([key, value]) => { const input = $(`[name="${key}"]`); if (input) input.value = value; });
+  const recording = state.config?.recording || {};
+  $("#recording-enabled").checked = recording.enabled !== false;
+  Object.entries(recording).forEach(([key,value])=>{const input=$(`[name="recording_${key}"]`);if(input)input.value=value});
 }
 
 function openToken() { $("#token-input").value = token; $("#token-dialog").showModal(); }
@@ -80,9 +84,10 @@ $("#token-form").addEventListener("submit", event => {
 
 $("#config-form").addEventListener("submit", async event => {
   event.preventDefault();
-  const media = {}; new FormData(event.target).forEach((value,key)=> media[key] = key === "threshold" ? Number(value) : Number.parseInt(value,10));
+  const media = {}, recording = {enabled:$("#recording-enabled").checked};
+  new FormData(event.target).forEach((value,key)=>{if(key.startsWith("recording_"))recording[key.slice(10)]=Number.parseInt(value,10);else media[key]=key==="threshold"?Number(value):Number.parseInt(value,10)});
   try {
-    const response = await api("/api/config", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({media,analytics:state.shapes,apply:$("#apply-now").checked})});
+    const response = await api("/api/config", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({media,analytics:state.shapes,recording,apply:$("#apply-now").checked})});
     const result = await response.json(); state.config = result.config; toast(result.applied ? "配置已应用，管线已重启" : "配置已保存，下次重启生效"); setTimeout(refreshAll, result.applied ? 2500 : 0);
   } catch (error) { toast(error.message,true); }
 });
@@ -104,7 +109,7 @@ canvas.onpointerup=e=>{if(!state.start)return;const p=canvasPoint(e),name=prompt
 function renderShapes(){const items=[...state.shapes.regions.map((x,i)=>({type:"区域",key:"regions",i,x})),...state.shapes.lines.map((x,i)=>({type:"越线",key:"lines",i,x}))];$("#shape-list").innerHTML=items.length?items.map(v=>`<div class="list-row"><span><strong>${escapeHtml(v.x.name)}</strong><br><small class="muted">${v.type}</small></span><button class="ghost remove-shape" data-key="${v.key}" data-index="${v.i}">删除</button></div>`).join(""):'<div class="empty">尚未定义规则</div>';$$('.remove-shape').forEach(b=>b.onclick=()=>{state.shapes[b.dataset.key].splice(Number(b.dataset.index),1);drawShapes();renderShapes()})}
 $$('[data-tool]').forEach(b=>b.onclick=()=>{$$('[data-tool]').forEach(x=>x.classList.remove('active'));b.classList.add('active');state.tool=b.dataset.tool});
 $("#clear-shapes").onclick=()=>{state.shapes={regions:[],lines:[]};drawShapes();renderShapes()};
-$("#save-shapes").onclick=async()=>{try{const media=state.config.media;const r=await api('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({media,analytics:state.shapes,apply:false})});state.config=(await r.json()).config;toast('规则坐标已保存')}catch(e){toast(e.message,true)}};
+$("#save-shapes").onclick=async()=>{try{const media=state.config.media,recording=state.config.recording;const r=await api('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({media,analytics:state.shapes,recording,apply:false})});state.config=(await r.json()).config;toast('规则坐标已保存')}catch(e){toast(e.message,true)}};
 
 async function loadEvents(){try{const r=await api('/api/events?limit=100'),data=await r.json(),types={region_enter:'进入区域',region_exit:'离开区域',line_cross:'越线'};$("#event-list").innerHTML=data.events.length?data.events.map(e=>`<div class="list-row"><span><strong>${escapeHtml(types[e.type]||e.type||e.event||'事件')} · ${escapeHtml(e.rule||'')}</strong><br><small class="muted">${escapeHtml(e.time||e.timestamp||'')}　Track ${escapeHtml(e.track_id??'--')}　${escapeHtml(e.direction||'')}</small></span><code>${escapeHtml(e.label||e.name||'')} ${(Number(e.score||0)*100).toFixed(0)}%</code></div>`).join(''):'<div class="empty">暂无事件记录</div>'}catch(e){toast(e.message,true)}}
 async function loadFiles(){try{const kind=$("#file-kind").value,r=await api(`/api/files?kind=${kind}`),data=await r.json();$("#file-list").innerHTML=data.files.length?data.files.map(f=>`<div class="list-row"><span><strong>${escapeHtml(f.name)}</strong><br><small class="muted">${(f.size/1048576).toFixed(2)} MiB</small></span><button class="ghost download-file" data-kind="${escapeHtml(f.kind)}" data-name="${encodeURIComponent(f.name)}">下载</button></div>`).join(''):'<div class="empty">暂无文件</div>';$$('.download-file').forEach(b=>b.onclick=()=>downloadAuthorized(`/api/files/download?kind=${b.dataset.kind}&name=${b.dataset.name}`,decodeURIComponent(b.dataset.name)))}catch(e){toast(e.message,true)}}

@@ -177,5 +177,25 @@ target_link_libraries(rkmedia_rockx_face_detection_rtsp PRIVATE
     Threads::Threads
     ${CMAKE_DL_LIBS})
 
+# The recorder is a separate low-priority process. It consumes the local RTSP
+# stream and remuxes H.264 plus G.711 A-law without decoding or re-encoding.
+rk_find_required_path(GSTREAMER_INCLUDE_DIR gst/gst.h "GStreamer"
+    "${RK_SDK_SYSROOT}/usr/include/gstreamer-1.0")
+rk_find_required_path(GLIB_INCLUDE_DIR glib.h "GLib"
+    "${RK_SDK_SYSROOT}/usr/include/glib-2.0")
+rk_find_required_path(GLIB_CONFIG_INCLUDE_DIR glibconfig.h "GLib configuration"
+    "${RK_SDK_SYSROOT}/usr/lib/glib-2.0/include")
+rk_find_required_library(GSTREAMER_LIBRARY gstreamer-1.0 "GStreamer core")
+rk_find_required_library(GOBJECT_LIBRARY gobject-2.0 "GLib object")
+rk_find_required_library(GLIB_LIBRARY glib-2.0 "GLib")
+add_executable(rv1126_recorder ../recording/rv1126_recorder.cpp)
+set_target_properties(rv1126_recorder PROPERTIES OUTPUT_NAME rv1126-recorder)
+target_compile_options(rv1126_recorder PRIVATE -Wall -Wextra -Wpedantic)
+target_include_directories(rv1126_recorder SYSTEM PRIVATE
+    "${GSTREAMER_INCLUDE_DIR}" "${GLIB_INCLUDE_DIR}" "${GLIB_CONFIG_INCLUDE_DIR}")
+target_link_libraries(rv1126_recorder PRIVATE
+    "${GSTREAMER_LIBRARY}" "${GOBJECT_LIBRARY}" "${GLIB_LIBRARY}"
+    Threads::Threads ${CMAKE_DL_LIBS})
+
 message(STATUS "RK device target enabled (sysroot: ${RK_SDK_SYSROOT}, ISP: ${RK_VISION_ENABLE_ISP})")
 endif()

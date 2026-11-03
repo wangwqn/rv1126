@@ -1,0 +1,59 @@
+#!/bin/sh
+set -eu
+
+APP_DIR=${RV1126_APP_DIR:-/root/rv1126_objects}
+PROGRAM="$APP_DIR/rv1126-time-sync.py"
+PID_FILE=${RV1126_TIME_PID_FILE:-/var/run/rv1126-time-sync.pid}
+LOG_FILE=${RV1126_TIME_LOG_FILE:-/tmp/rv1126-time-sync.log}
+STATUS_FILE=${RV1126_TIME_STATUS_FILE:-/userdata/rv1126-time/status.json}
+
+running_pid() {
+    [ -s "$PID_FILE" ] || return 1
+    pid=$(cat "$PID_FILE" 2>/dev/null || true)
+    case "$pid" in *[!0-9]*|'') return 1 ;; esac
+    [ -d "/proc/$pid" ] || return 1
+    command_line=$(tr '\000' ' ' <"/proc/$pid/cmdline" 2>/dev/null || true)
+    case "$command_line" in *"$PROGRAM"*) printf '%s\n' "$pid" ;; *) return 1 ;; esac
+}
+
+start_service() {
+    [ -s "$PROGRAM" ] || { echo "Missing time synchroniser: $PROGRAM" >&2; return 1; }
+    if pid=$(running_pid); then echo "Already running: pid=$pid"; return 0; fi
+    mkdir -p /userdata/rv1126-time
+    : >"$LOG_FILE"
+    start-stop-daemon -S -b -m -p "$PID_FILE" -x /usr/bin/python3 -- \
+        "$PROGRAM" --daemon --status "$STATUS_FILE" >>"$LOG_FILE" 2>&1
+    sleep 1
+    pid=$(running_pid) || { tail -40 "$LOG_FILE" >&2 || true; return 1; }
+    echo "Started: pid=$pid status=$STATUS_FILE"
+}
+
+stop_service() {
+    if pid=$(running_pid); then
+        kill -TERM "$pid" 2>/dev/null || true
+        count=0
+        while [ -d "/proc/$pid" ] && [ "$count" -lt 5 ]; do sleep 1; count=$((count + 1)); done
+        [ ! -d "/proc/$pid" ] || kill -KILL "$pid" 2>/dev/null || true
+    fi
+    rm -f "$PID_FILE"
+    echo "Stopped"
+}
+
+case "${1:-}" in
+    start) start_service ;;
+    stop) stop_service ;;
+    restart) stop_service; start_service ;;
+    once) exec /usr/bin/python3 "$PROGRAM" --status "$STATUS_FILE" ;;
+    status)
+        if pid=$(running_pid); then echo "Running: pid=$pid"; else echo "Stopped"; fi
+        [ ! -s "$STATUS_FILE" ] || cat "$STATUS_FILE"
+        ;;
+    health)
+        now=$(date +%s)
+        case "$now" in *[!0-9]*|'') now=0 ;; esac
+        if [ "$now" -ge 1704067200 ]; then echo "Healthy: unix_time=$now"; exit 0; fi
+        echo "Unhealthy: system time is not initialised"; exit 1
+        ;;
+    log) tail -100 "$LOG_FILE" 2>/dev/null || true ;;
+    *) echo "Usage: $0 {start|stop|restart|once|status|health|log}" >&2; exit 2 ;;
+esac

@@ -50,7 +50,9 @@ COMPONENT_PATHS = {
     "web": {"rv1126-web", "rv1126-web.py", "web-index.html",
             "web-app.js", "web-styles.css"},
     "application": {"object_image", "rv1126-object",
-                    "rkmedia_object_detection_rtsp", "GIT_COMMIT"},
+                    "rkmedia_object_detection_rtsp", "rv1126-recorder",
+                    "rv1126-recording", "rv1126-recording.py",
+                    "rv1126-time-sync", "rv1126-time-sync.py", "GIT_COMMIT"},
 }
 
 
@@ -700,6 +702,12 @@ class OTAManager:
             raise OTAError("{} {} failed: {}".format(name, action, result.stdout.strip()))
         return result.stdout.strip()
 
+    def _run_optional_controller(self, name, action, timeout=45, check=True):
+        controller = self.current / name
+        if not controller.is_file():
+            return ""
+        return self._run_controller(name, action, timeout, check)
+
     @staticmethod
     def _terminate_pid_file(path):
         path = Path(path)
@@ -736,14 +744,17 @@ class OTAManager:
     def _stop_services(self):
         # A malformed candidate may not contain executable controllers. Never
         # make rollback depend solely on code from the candidate release.
-        for name in ("rv1126-web", "rv1126-object"):
+        for name in ("rv1126-recording", "rv1126-time-sync",
+                     "rv1126-web", "rv1126-object"):
             try:
-                self._run_controller(name, "stop", check=False)
+                self._run_optional_controller(name, "stop", check=False)
             except (OSError, subprocess.TimeoutExpired):
                 pass
         for pid_file in ("/var/run/rv1126-object-watchdog.pid",
                          "/var/run/rv1126-object.pid",
-                         "/var/run/rv1126-web.pid"):
+                         "/var/run/rv1126-web.pid",
+                         "/var/run/rv1126-recording.pid",
+                         "/var/run/rv1126-time-sync.pid"):
             self._terminate_pid_file(pid_file)
 
     def _wait_health(self, timeout=60):
@@ -753,7 +764,9 @@ class OTAManager:
             try:
                 media = self._run_controller("rv1126-object", "health", timeout=20)
                 web = self._run_controller("rv1126-web", "health", timeout=10)
-                return {"media": media, "web": web}
+                recording = self._run_optional_controller(
+                    "rv1126-recording", "health", timeout=10)
+                return {"media": media, "web": web, "recording": recording}
             except (OTAError, OSError, subprocess.TimeoutExpired) as error:
                 last = str(error)
             time.sleep(2)
@@ -785,6 +798,27 @@ class OTAManager:
                 temporary.unlink()
             temporary.symlink_to(target)
             os.replace(temporary, path)
+        # Recovery must run before any controller reached through the mutable
+        # /root/rv1126_objects link.  Recording must start after the media
+        # service has opened RTSP port 8554.
+        for link, target in (("/etc/init.d/S97zrv1126-time-sync",
+                              "/root/rv1126_objects/rv1126-time-sync"),
+                             ("/etc/init.d/S99zrv1126-recording",
+                              "/root/rv1126_objects/rv1126-recording")):
+            path = Path(link)
+            temporary = path.parent / ("." + path.name + ".new")
+            if temporary.exists() or temporary.is_symlink():
+                temporary.unlink()
+            if Path(target).is_file():
+                temporary.symlink_to(target)
+                os.replace(temporary, path)
+            elif path.exists() or path.is_symlink():
+                path.unlink()
+        for legacy in ("/etc/init.d/S95rv1126-time-sync",
+                       "/etc/init.d/S96rv1126-recording"):
+            path = Path(legacy)
+            if path.is_symlink():
+                path.unlink()
 
     def bootstrap(self):
         with self.locked():
@@ -817,6 +851,8 @@ class OTAManager:
                                sequence=version_sequence(version))
             self._run_controller("rv1126-object", "start", check=False)
             self._run_controller("rv1126-web", "start", check=False)
+            self._run_optional_controller("rv1126-time-sync", "start", check=False)
+            self._run_optional_controller("rv1126-recording", "start", check=False)
             health = self._wait_health(60)
             self._history("bootstrap", "success", version=version)
             return {"bootstrapped": True, "active": active, "health": health}
@@ -844,6 +880,8 @@ class OTAManager:
             self._install_boot_links()
             self._run_controller("rv1126-object", "start", check=False)
             self._run_controller("rv1126-web", "start", check=False)
+            self._run_optional_controller("rv1126-time-sync", "start", check=False)
+            self._run_optional_controller("rv1126-recording", "start", check=False)
             health = self._wait_health(60)
             atomic_json(self.transaction_file, {
                 "status": "rolled_back", "previous": str(previous),
@@ -900,6 +938,8 @@ class OTAManager:
                     time.sleep(test_hold)
                 self._run_controller("rv1126-object", "start", check=False)
                 self._run_controller("rv1126-web", "start", check=False)
+                self._run_optional_controller("rv1126-time-sync", "start", check=False)
+                self._run_optional_controller("rv1126-recording", "start", check=False)
                 health = self._wait_health(60)
             except Exception as error:
                 try:
@@ -946,6 +986,8 @@ class OTAManager:
                 self._install_boot_links()
                 self._run_controller("rv1126-object", "start", check=False)
                 self._run_controller("rv1126-web", "start", check=False)
+                self._run_optional_controller("rv1126-time-sync", "start", check=False)
+                self._run_optional_controller("rv1126-recording", "start", check=False)
                 health = self._wait_health(60)
             except Exception as error:
                 self._rollback_after_failure(current, previous, str(error))

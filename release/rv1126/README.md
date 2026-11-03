@@ -96,6 +96,17 @@ IMX415 1944×1097 RAW12 2×2 binning，对齐1920×1080有效区域，输出
 板载 IQ 缺少 1080p ALSC 标定，因此该模式明确旁路 ALSC；正式产品应补做镜头标定。
 当前发布程序没有 `--disable-tnr` 参数。OSD默认按置信度显示最多8个
 中文名称+置信度检测框，可用 `--max-osd-boxes 1..8` 调整。
+
+1.15.0 新增开机 SNTP/RTC 校时和本地录像：
+
+```bash
+/root/rv1126_objects/rv1126-time-sync health
+/root/rv1126_objects/rv1126-recording health
+```
+
+录像按默认10秒分片保存 H.264 + G.711A MKV，支持循环覆盖和区域/越线事件前后
+录像；录像仅保存在板端。详细策略见 `deploy/recording/README.md`。HTTPS 生产环境
+应使用设备 CA 签名证书，Windows 只导入公开根证书，见 `handoff/DEVICE_CA.md`。
 v1.9.4 起使用项目自有的异步 RTP-over-TCP 服务端替换旧 `librtsp`；当前发布仍以
 4 Mbps 作为默认值。RTSP URL 不变，客户端需使用 TCP transport。v1.9.6 增加
 `--rtsp-client-buffer-kb 128..4096`，默认512 KiB；扩大缓冲能吸收短时拥塞，

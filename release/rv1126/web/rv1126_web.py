@@ -91,6 +91,7 @@ class ManagementState:
         self.root = Path(root).absolute()
         self.token_file = Path(token_file)
         self.controller = self.root / "rv1126-object"
+        self.recording_controller = self.root / "rv1126-recording"
         self.runtime_config = self.root / "runtime-config.json"
         self.runtime_args = self.root / "runtime.args"
         self.events_file = self.root / "events" / "events.jsonl"
@@ -132,6 +133,15 @@ class ManagementState:
                 "rtsp_client_buffer_kb": 512,
             },
             "analytics": {"regions": [], "lines": []},
+            "recording": {
+                "enabled": True,
+                "segment_seconds": 10,
+                "max_storage_mb": 512,
+                "min_free_mb": 128,
+                "event_pre_seconds": 10,
+                "event_post_seconds": 20,
+                "event_storage_mb": 192,
+            },
         }
 
     def token(self):
@@ -237,6 +247,7 @@ class ManagementState:
             stored = json.loads(self.runtime_config.read_text(encoding="utf-8"))
             config["media"].update(stored.get("media", {}))
             config["analytics"].update(stored.get("analytics", {}))
+            config["recording"].update(stored.get("recording", {}))
         except (OSError, ValueError, TypeError):
             config = self._parse_saved_args(config)
         return self.validate_config(config)
@@ -304,11 +315,31 @@ class ManagementState:
             raise ValueError("regions must contain at most 16 items")
         if not isinstance(lines, list) or len(lines) > 16:
             raise ValueError("lines must contain at most 16 items")
+        recording = config.get("recording", {})
+        if not isinstance(recording, dict):
+            raise ValueError("recording must be an object")
+        recording_defaults = cls.defaults()["recording"]
+        unknown_recording = set(recording) - set(recording_defaults)
+        if unknown_recording:
+            raise ValueError("unknown recording settings: " +
+                             ", ".join(sorted(unknown_recording)))
+        enabled = recording.get("enabled", recording_defaults["enabled"])
+        if not isinstance(enabled, bool):
+            raise ValueError("recording.enabled must be boolean")
         return {
             "media": result_media,
             "analytics": {
                 "regions": [cls._shape(item, "region") for item in regions],
                 "lines": [cls._shape(item, "line") for item in lines],
+            },
+            "recording": {
+                "enabled": enabled,
+                "segment_seconds": cls._number(recording.get("segment_seconds", 10), 5, 600, "segment_seconds"),
+                "max_storage_mb": cls._number(recording.get("max_storage_mb", 512), 64, 8192, "max_storage_mb"),
+                "min_free_mb": cls._number(recording.get("min_free_mb", 128), 32, 4096, "min_free_mb"),
+                "event_pre_seconds": cls._number(recording.get("event_pre_seconds", 10), 0, 120, "event_pre_seconds"),
+                "event_post_seconds": cls._number(recording.get("event_post_seconds", 20), 0, 300, "event_post_seconds"),
+                "event_storage_mb": cls._number(recording.get("event_storage_mb", 192), 32, 4096, "event_storage_mb"),
             },
         }
 
@@ -369,6 +400,7 @@ class ManagementState:
                 try:
                     self.run_controller("restart", timeout=90)
                     self.wait_controller_health()
+                    self.restart_recording()
                 except Exception as apply_error:
                     if old_config is None:
                         self.runtime_config.unlink(missing_ok=True)
@@ -385,6 +417,7 @@ class ManagementState:
                     try:
                         self.run_controller("restart", timeout=90)
                         self.wait_controller_health()
+                        self.restart_recording()
                     except Exception as rollback_error:
                         raise RuntimeError(
                             "configuration apply failed: {}; rollback failed: {}".format(
@@ -419,6 +452,20 @@ class ManagementState:
                     "media pipeline did not become healthy within {}s after {} attempts: {}".format(
                         timeout, attempts, last_error))
             time.sleep(min(interval, remaining))
+
+    def restart_recording(self, timeout=50):
+        if not self.recording_controller.is_file():
+            return "recording controller is unavailable"
+        code, output = run([str(self.recording_controller), "restart"], timeout=30)
+        if code:
+            raise RuntimeError(output or "recording restart failed")
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            code, output = run([str(self.recording_controller), "health"], timeout=10)
+            if code == 0:
+                return output
+            time.sleep(2)
+        raise RuntimeError("recording did not become healthy: " + output)
 
     @staticmethod
     def _read_int(path, default=0):
@@ -616,7 +663,7 @@ class ManagementState:
             git_commit = (self.root / "GIT_COMMIT").read_text().strip()
         except OSError:
             pass
-        return {
+        result = {
             "version": version,
             "git_commit": git_commit,
             "running": bool(pid),
@@ -627,6 +674,13 @@ class ManagementState:
             "rtsp": {"port": 8554, "main": "/live/main_stream", "sub": "/live/sub_stream"},
             "config": self.config(),
         }
+        for name, path in (("recording", Path("/userdata/rv1126-recording/status.json")),
+                           ("time_sync", Path("/userdata/rv1126-time/status.json"))):
+            try:
+                result[name] = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, ValueError, TypeError):
+                result[name] = {}
+        return result
 
     def metrics(self):
         pid = self._pid()
@@ -637,6 +691,15 @@ class ManagementState:
         result.update(self._latest_video())
         result.update(self._latest_dma())
         result["cpu_total_percent"] = self._cpu_percent(pid)
+        try:
+            recording = json.loads(Path(
+                "/userdata/rv1126-recording/status.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError, TypeError):
+            recording = {}
+        for key in ("segments", "continuous_bytes", "event_files", "event_bytes",
+                    "pending_events", "restart_count"):
+            result["recording_" + key] = recording.get(key, 0)
+        result["recording_ok"] = bool(recording.get("ok"))
         result["errcnt"] = 0
         try:
             text = Path("/proc/rkispp0").read_text()

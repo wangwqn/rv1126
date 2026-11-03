@@ -1,5 +1,30 @@
 # 物品检测测试流程
 
+## 校时、HTTPS与录像验收
+
+```bash
+python3 -m unittest discover -s deploy/time/tests -v
+python3 -m unittest discover -s deploy/recording/tests -v
+adb shell '/root/rv1126_objects/rv1126-time-sync health'
+adb shell '/root/rv1126_objects/rv1126-recording health'
+adb shell 'cat /userdata/rv1126-time/status.json'
+adb shell 'cat /userdata/rv1126-recording/status.json'
+```
+
+至少等待两个分片周期，抽取一个已关闭的 MKV，用 `ffprobe` 确认 H.264 30 FPS
+和 8 kHz 单声道 A-law 音轨。生成一次区域或越线事件，等待“后录时长 + 两个
+分片”，检查 `recordings/events/*/event.json` 的 `recording_files` 非空。
+
+TLS 验收必须使用 CA 而不是 `-k`：
+
+```bash
+openssl verify -purpose sslserver -CAfile rv1126-device-ca.crt rv1126-003.crt
+curl --cacert rv1126-device-ca.crt https://<开发板IP>/
+```
+
+对外443必须返回页面，8080必须拒绝连接。断电冷启验收还要检查：没有持久化
+错误时间戳的新录像，NTP成功后RTC已写入，媒体、录像和Web服务自动恢复。
+
 ## Web 管理服务回归
 
 主机回归（仅监听 `127.0.0.1` 临时端口）：
