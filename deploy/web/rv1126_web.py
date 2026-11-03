@@ -334,9 +334,6 @@ class ManagementState:
             "--rtsp-client-buffer-kb", str(media["rtsp_client_buffer_kb"]),
             "--audio-device", "plughw:0,0", "--audio-source", "main",
             "--audio-period-ms", "20", "--dma-audit",
-            "--analytics-rules", str(self.analytics_rules),
-            "--event-log", str(self.events_file),
-            "--event-cooldown-ms", "2000", "--event-max-missed", "3",
         ]
         return arguments + self._model_arguments()
 

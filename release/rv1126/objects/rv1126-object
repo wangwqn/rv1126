@@ -112,6 +112,20 @@ load_runtime_args() {
     printf '%s\n' "$@"
 }
 
+effective_args() {
+    analytics_configured=0
+    for arg in "$@"; do
+        [ "$arg" != --analytics-rules ] || analytics_configured=1
+    done
+    if [ "$analytics_configured" -eq 0 ] && [ -s "$APP_DIR/analytics.rules" ]; then
+        set -- "$@" \
+            --analytics-rules "$APP_DIR/analytics.rules" \
+            --event-log "$APP_DIR/events/events.jsonl" \
+            --event-cooldown-ms 2000 --event-max-missed 3
+    fi
+    printf '%s\n' "$@"
+}
+
 save_args() {
     : >"$WATCHDOG_ARGS_FILE"
     for arg in "$@"; do
@@ -352,6 +366,11 @@ start_service() {
         fi
     fi
 
+    # runtime.args is shared by A/B releases and must remain readable by an
+    # older binary after rollback.  Keep new analytics options out of that
+    # persistent file and append them only in controllers that support them.
+    set -- $(effective_args "$@")
+
     if pid=$(running_pid); then
         if watchdog_pid >/dev/null; then
             echo "Already running: pid=$pid watchdog=$(watchdog_pid)"
@@ -533,6 +552,7 @@ case "$command" in
                 set -- $(set_default_args)
             fi
         fi
+        set -- $(effective_args "$@")
         exec "$APP" "$@"
         ;;
     install-autostart)

@@ -62,8 +62,8 @@ class WebApiTest(unittest.TestCase):
         arguments = self.state.runtime_args.read_text().splitlines()
         self.assertEqual(arguments[arguments.index("--bitrate") + 1], "5000000")
         self.assertEqual(arguments[arguments.index("--gop") + 1], "60")
-        self.assertEqual(arguments[arguments.index("--analytics-rules") + 1],
-                         str(self.state.analytics_rules))
+        self.assertNotIn("--analytics-rules", arguments)
+        self.assertNotIn("--event-log", arguments)
         rules = self.state.analytics_rules.read_text(encoding="utf-8")
         self.assertIn("region 6465736b 0.10000000 0.20000000 0.30000000 0.40000000", rules)
 
