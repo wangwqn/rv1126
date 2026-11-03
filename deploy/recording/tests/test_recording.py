@@ -105,6 +105,25 @@ class RecordingTest(unittest.TestCase):
         self.assertEqual(len(service.pending), 1)
         self.assertFalse((service.pending[0]["directory"] / "event.json").exists())
 
+    def test_final_window_does_not_include_waiting_period(self):
+        event_log = self.root / "events" / "events.jsonl"
+        event_log.write_text("", encoding="utf-8")
+        service = recording.RecordingService(self.args)
+        seen = time.time()
+        session = time.strftime("%Y%m%dT%H%M%S", time.localtime(seen - 20))
+        for index in range(8):
+            (service.continuous / "{}-{:05d}.mkv".format(session, index)).write_bytes(b"x")
+        event_log.write_text(json.dumps({"type": "object"}) + "\n", encoding="utf-8")
+        service._read_events()
+        service.pending[0]["seen_at"] = seen
+        service.pending[0]["due"] = 0
+        service._finish_events()
+        manifest = json.loads((service.events / next(service.events.iterdir()).name /
+                               "event.json").read_text(encoding="utf-8"))
+        # Filename timestamps have one-second precision, so this 30-second
+        # window intersects four segments, never the later grace-period files.
+        self.assertEqual(len(manifest["recording_files"]), 4)
+
     def test_continuous_cleanup_keeps_newest_segments(self):
         value = dict(recording.DEFAULTS)
         value.update({"max_storage_mb": 64, "min_free_mb": 32})

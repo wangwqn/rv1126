@@ -225,14 +225,16 @@ class RecordingService:
                  if final else now)
         for modified, source in self._segments():
             segment_start, segment_end = self._segment_window(modified, source)
-            if segment_end >= lower and segment_start <= upper:
+            if segment_end > lower and segment_start < upper:
                 self._link(source, pending["directory"] / source.name)
+        files = sorted(path.name for path in pending["directory"].glob("*.mkv"))
         if final:
-            files = sorted(path.name for path in pending["directory"].glob("*.mkv"))
-            atomic_json(pending["directory"] / "event.json",
-                        {"event": pending["event"], "recording_files": files,
-                         "pre_seconds": self.config["event_pre_seconds"],
-                         "post_seconds": self.config["event_post_seconds"]}, 0o644)
+            if files:
+                atomic_json(pending["directory"] / "event.json",
+                            {"event": pending["event"], "recording_files": files,
+                             "pre_seconds": self.config["event_pre_seconds"],
+                             "post_seconds": self.config["event_post_seconds"]}, 0o644)
+        return files
 
     def _read_events(self):
         try:
@@ -271,10 +273,14 @@ class RecordingService:
         remaining = []
         for pending in self.pending:
             if now >= pending["due"]:
-                self._protect_window(pending, False)
-                files = list(pending["directory"].glob("*.mkv"))
-                if files or now >= pending["expires"]:
-                    self._protect_window(pending, True)
+                files = self._protect_window(pending, True)
+                if files:
+                    pass
+                elif now >= pending["expires"]:
+                    atomic_json(pending["directory"] / "event.json",
+                                {"event": pending["event"], "recording_files": [],
+                                 "pre_seconds": self.config["event_pre_seconds"],
+                                 "post_seconds": self.config["event_post_seconds"]}, 0o644)
                 else:
                     remaining.append(pending)
             else:
