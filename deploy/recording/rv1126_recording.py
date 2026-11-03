@@ -220,9 +220,8 @@ class RecordingService:
 
     def _protect_window(self, pending, final=False):
         now = time.time()
-        segment = self.config["segment_seconds"]
-        lower = pending["seen_at"] - self.config["event_pre_seconds"] - segment
-        upper = (pending["seen_at"] + self.config["event_post_seconds"] + segment
+        lower = pending["seen_at"] - self.config["event_pre_seconds"]
+        upper = (pending["seen_at"] + self.config["event_post_seconds"]
                  if final else now)
         for modified, source in self._segments():
             segment_start, segment_end = self._segment_window(modified, source)

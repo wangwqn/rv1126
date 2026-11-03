@@ -82,6 +82,7 @@ class RecordingTest(unittest.TestCase):
         service._read_events()
         linked = list(service.pending[0]["directory"].glob("*.mkv"))
         self.assertTrue(linked)
+        self.assertLessEqual(len(linked), 2)
 
     def test_disabled_service_stays_healthy_until_stopped(self):
         service = recording.RecordingService(self.args)
