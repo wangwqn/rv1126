@@ -52,7 +52,8 @@ COMPONENT_PATHS = {
     "application": {"object_image", "rv1126-object",
                     "rkmedia_object_detection_rtsp", "rv1126-recorder",
                     "rv1126-recording", "rv1126-recording.py",
-                    "rv1126-time-sync", "rv1126-time-sync.py", "GIT_COMMIT"},
+                    "rv1126-time-sync", "rv1126-time-sync.py",
+                    "rv1126-wifi", "GIT_COMMIT"},
 }
 
 
@@ -801,7 +802,9 @@ class OTAManager:
         # Recovery must run before any controller reached through the mutable
         # /root/rv1126_objects link.  Recording must start after the media
         # service has opened RTSP port 8554.
-        for link, target in (("/etc/init.d/S97zrv1126-time-sync",
+        for link, target in (("/etc/init.d/S97yrv1126-wifi",
+                              "/root/rv1126_objects/rv1126-wifi"),
+                             ("/etc/init.d/S97zrv1126-time-sync",
                               "/root/rv1126_objects/rv1126-time-sync"),
                              ("/etc/init.d/S99zrv1126-recording",
                               "/root/rv1126_objects/rv1126-recording")):
@@ -851,6 +854,7 @@ class OTAManager:
                                sequence=version_sequence(version))
             self._run_controller("rv1126-object", "start", check=False)
             self._run_controller("rv1126-web", "start", check=False)
+            self._run_optional_controller("rv1126-wifi", "start", check=False)
             self._run_optional_controller("rv1126-time-sync", "start", check=False)
             self._run_optional_controller("rv1126-recording", "start", check=False)
             health = self._wait_health(60)
@@ -880,6 +884,7 @@ class OTAManager:
             self._install_boot_links()
             self._run_controller("rv1126-object", "start", check=False)
             self._run_controller("rv1126-web", "start", check=False)
+            self._run_optional_controller("rv1126-wifi", "start", check=False)
             self._run_optional_controller("rv1126-time-sync", "start", check=False)
             self._run_optional_controller("rv1126-recording", "start", check=False)
             health = self._wait_health(60)
@@ -938,6 +943,7 @@ class OTAManager:
                     time.sleep(test_hold)
                 self._run_controller("rv1126-object", "start", check=False)
                 self._run_controller("rv1126-web", "start", check=False)
+                self._run_optional_controller("rv1126-wifi", "start", check=False)
                 self._run_optional_controller("rv1126-time-sync", "start", check=False)
                 self._run_optional_controller("rv1126-recording", "start", check=False)
                 health = self._wait_health(60)
@@ -986,6 +992,7 @@ class OTAManager:
                 self._install_boot_links()
                 self._run_controller("rv1126-object", "start", check=False)
                 self._run_controller("rv1126-web", "start", check=False)
+                self._run_optional_controller("rv1126-wifi", "start", check=False)
                 self._run_optional_controller("rv1126-time-sync", "start", check=False)
                 self._run_optional_controller("rv1126-recording", "start", check=False)
                 health = self._wait_health(60)

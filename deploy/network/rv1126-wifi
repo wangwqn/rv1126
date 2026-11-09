@@ -1,0 +1,117 @@
+#!/bin/sh
+set -u
+
+STATE_DIR=${RV1126_NETWORK_STATE_DIR:-/userdata/rv1126-network}
+PROFILE="$STATE_DIR/wpa_supplicant.conf"
+NETWORK_CONFIG="$STATE_DIR/network.conf"
+PID_FILE=/var/run/rv1126-wpa.pid
+CTRL_DIR=/var/run/wpa_supplicant
+
+config_value() {
+    sed -n "s/^$1=//p" "$NETWORK_CONFIG" 2>/dev/null | tail -1
+}
+
+load_config() {
+    ADDRESS=$(config_value ADDRESS)
+    GATEWAY=$(config_value GATEWAY)
+    DNS1=$(config_value DNS1)
+    DNS2=$(config_value DNS2)
+    case "$ADDRESS:$GATEWAY:$DNS1:$DNS2" in
+        *[!0-9./:]*) echo "Invalid network configuration" >&2; return 1 ;;
+    esac
+    [ -n "$ADDRESS" ] && [ -n "$GATEWAY" ] && [ -n "$DNS1" ]
+}
+
+running_pid() {
+    [ -s "$PID_FILE" ] || return 1
+    pid=$(cat "$PID_FILE" 2>/dev/null || true)
+    case "$pid" in *[!0-9]*|'') return 1 ;; esac
+    [ -d "/proc/$pid" ] || return 1
+    command_line=$(tr '\000' ' ' <"/proc/$pid/cmdline" 2>/dev/null || true)
+    case "$command_line" in *wpa_supplicant*"-i wlan0"*) printf '%s\n' "$pid" ;; *) return 1 ;; esac
+}
+
+apply_network() {
+    ip addr flush dev wlan0
+    ip addr add "$ADDRESS" dev wlan0
+    ip route replace default via "$GATEWAY" dev wlan0
+    {
+        printf 'nameserver %s\n' "$DNS1"
+        [ -z "$DNS2" ] || printf 'nameserver %s\n' "$DNS2"
+    } >/etc/resolv.conf
+}
+
+start_service() {
+    [ -s "$PROFILE" ] || { echo "Missing WPA profile: $PROFILE" >&2; return 1; }
+    load_config || return 1
+    mkdir -p "$STATE_DIR" "$CTRL_DIR"
+    chmod 0700 "$STATE_DIR"
+    chmod 0600 "$PROFILE" "$NETWORK_CONFIG"
+    if ! pid=$(running_pid); then
+        /etc/init.d/S45connman stop >/dev/null 2>&1 || true
+        killall wpa_supplicant >/dev/null 2>&1 || true
+        rm -f "$PID_FILE" "$CTRL_DIR/wlan0" "$CTRL_DIR/p2p-dev-wlan0"
+        ip link set wlan0 up
+        /usr/sbin/wpa_supplicant -B -P "$PID_FILE" -i wlan0 -c "$PROFILE"
+        pid=$(running_pid) || { echo "wpa_supplicant failed to start" >&2; return 1; }
+    fi
+    apply_network
+    count=0
+    while [ "$count" -lt 30 ]; do
+        if wpa_cli -i wlan0 status 2>/dev/null | grep -q '^wpa_state=COMPLETED$'; then
+            echo "Wi-Fi connected: pid=$pid address=$ADDRESS"
+            return 0
+        fi
+        sleep 1
+        count=$((count + 1))
+    done
+    # Keep scanning after init returns.  NTP retries independently and will
+    # recover as soon as the hotspot becomes visible.
+    echo "Wi-Fi is scanning: pid=$pid address=$ADDRESS"
+    return 0
+}
+
+stop_service() {
+    if pid=$(running_pid); then
+        kill -TERM "$pid" 2>/dev/null || true
+        count=0
+        while [ -d "/proc/$pid" ] && [ "$count" -lt 10 ]; do
+            sleep 1
+            count=$((count + 1))
+        done
+        [ ! -d "/proc/$pid" ] || kill -KILL "$pid" 2>/dev/null || true
+    fi
+    rm -f "$PID_FILE" "$CTRL_DIR/wlan0" "$CTRL_DIR/p2p-dev-wlan0"
+    echo "Wi-Fi controller stopped"
+}
+
+status_service() {
+    if pid=$(running_pid); then echo "Running: pid=$pid"; else echo "Stopped"; fi
+    wpa_cli -i wlan0 status 2>/dev/null | grep -E '^(ssid|key_mgmt|wpa_state|ip_address)=' || true
+    ip -4 addr show wlan0 2>/dev/null | sed -n '/inet /p'
+    ip route 2>/dev/null | sed -n '/^default /p'
+}
+
+health_service() {
+    load_config || return 1
+    pid=$(running_pid) || { echo "Unhealthy: wpa_supplicant is not running"; return 1; }
+    state=$(wpa_cli -i wlan0 status 2>/dev/null | sed -n 's/^wpa_state=//p')
+    ssid=$(wpa_cli -i wlan0 status 2>/dev/null | sed -n 's/^ssid=//p')
+    [ "$state" = COMPLETED ] || { echo "Unhealthy: Wi-Fi state=$state"; return 1; }
+    ip -4 addr show wlan0 | grep -Fq "inet $ADDRESS" || {
+        echo "Unhealthy: expected address $ADDRESS"; return 1;
+    }
+    ip route | grep -Fq "default via $GATEWAY dev wlan0" || {
+        echo "Unhealthy: default route is missing"; return 1;
+    }
+    echo "Healthy: pid=$pid ssid=$ssid address=$ADDRESS gateway=$GATEWAY"
+}
+
+case "${1:-}" in
+    start) start_service ;;
+    stop) stop_service ;;
+    restart) stop_service; start_service ;;
+    status) status_service ;;
+    health) health_service ;;
+    *) echo "Usage: $0 {start|stop|restart|status|health}" >&2; exit 2 ;;
+esac

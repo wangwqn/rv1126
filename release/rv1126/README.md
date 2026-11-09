@@ -104,6 +104,15 @@ IMX415 1944×1097 RAW12 2×2 binning，对齐1920×1080有效区域，输出
 /root/rv1126_objects/rv1126-recording health
 ```
 
+1.15.3 起在 NTP 之前使用项目自有 Wi-Fi 冷启动控制器：
+
+```bash
+/root/rv1126_objects/rv1126-wifi health
+```
+
+WPA凭据和静态IP配置仅保存在 `/userdata/rv1126-network/`，不进入OTA包。
+详见 `deploy/network/README.md`。
+
 录像按默认10秒分片保存 H.264 + G.711A MKV，支持循环覆盖和区域/越线事件前后
 录像；录像仅保存在板端。详细策略见 `deploy/recording/README.md`。HTTPS 生产环境
 应使用设备 CA 签名证书，Windows 只导入公开根证书，见 `handoff/DEVICE_CA.md`。

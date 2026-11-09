@@ -20,6 +20,7 @@ FILES = (
     ("objects/labels.png", "labels.png", 0o644, "model"),
     ("objects/object_image", "object_image", 0o755, "application"),
     ("objects/rv1126-object", "rv1126-object", 0o755, "application"),
+    ("objects/rv1126-wifi", "rv1126-wifi", 0o755, "application"),
     ("objects/rv1126-recorder", "rv1126-recorder", 0o755, "application"),
     ("objects/rv1126-recording", "rv1126-recording", 0o755, "application"),
     ("objects/rv1126-recording.py", "rv1126-recording.py", 0o755, "application"),

@@ -7,6 +7,7 @@ python3 -m unittest discover -s deploy/time/tests -v
 python3 -m unittest discover -s deploy/recording/tests -v
 adb shell '/root/rv1126_objects/rv1126-time-sync health'
 adb shell '/root/rv1126_objects/rv1126-recording health'
+adb shell '/root/rv1126_objects/rv1126-wifi health'
 adb shell 'cat /userdata/rv1126-time/status.json'
 adb shell 'cat /userdata/rv1126-recording/status.json'
 ```
@@ -24,6 +25,8 @@ curl --cacert rv1126-device-ca.crt https://<开发板IP>/
 
 对外443必须返回页面，8080必须拒绝连接。断电冷启验收还要检查：没有持久化
 错误时间戳的新录像，NTP成功后RTC已写入，媒体、录像和Web服务自动恢复。
+还必须对比断电前后 `boot_id`，并确认在不执行任何手动联网命令时 Wi-Fi、默认路由和
+指定静态IP均自动恢复。
 
 ## Web 管理服务回归
 

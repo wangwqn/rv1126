@@ -2,6 +2,7 @@ import importlib.util
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest import mock
 
 
@@ -35,6 +36,20 @@ class TimeSyncTest(unittest.TestCase):
             path = Path(temporary) / "status.json"
             time_sync.atomic_json(path, {"ok": True})
             self.assertEqual(path.read_text(encoding="utf-8"), '{"ok": true}\n')
+
+    def test_success_status_uses_corrected_clock(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            args = SimpleNamespace(servers=("a",), timeout=1,
+                                   status=str(Path(temporary) / "status.json"))
+            samples = [(1800000000.0, "a", 2.0, 2)]
+            with mock.patch.object(time_sync, "sample",
+                                   return_value=(1800000000, samples, {})), \
+                    mock.patch.object(time_sync, "set_clock", return_value=(True, "")), \
+                    mock.patch.object(time_sync.time, "time",
+                                      side_effect=(100, 1800000001)):
+                result = time_sync.sync_once(args)
+            self.assertEqual(result["attempted_at"], 1800000001)
+            self.assertEqual(result["clock_before_sync"], 100)
 
 
 if __name__ == "__main__":

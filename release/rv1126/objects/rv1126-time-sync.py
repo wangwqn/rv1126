@@ -99,13 +99,13 @@ def set_clock(timestamp):
 
 
 def sync_once(args):
-    attempted_at = int(time.time())
+    clock_before_sync = int(time.time())
     timestamp, samples, errors = sample(args.servers, args.timeout)
     rtc_ok, rtc_message = set_clock(timestamp)
     result = {
         "ok": True,
         "synced_at": timestamp,
-        "attempted_at": attempted_at,
+        "attempted_at": int(time.time()),
         "sources": [
             {"server": server, "unix_time": round(value, 3),
              "latency_ms": latency, "stratum": stratum}
@@ -114,6 +114,8 @@ def sync_once(args):
         "errors": errors,
         "rtc_written": rtc_ok,
     }
+    if clock_before_sync < MIN_UNIX_TIME:
+        result["clock_before_sync"] = clock_before_sync
     if rtc_message:
         result["rtc_message"] = rtc_message
     atomic_json(args.status, result)
