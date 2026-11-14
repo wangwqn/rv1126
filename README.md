@@ -1,5 +1,8 @@
 # RV1126 常见物品检测训练与部署
 
+**新接手或交给其他AI时，先读 [完整项目交接档案（2026-11-14）](handoff/PROJECT_HANDOFF_2026-11-14.md)。**
+其中区分了正式板端v1.15.3与未发布诊断提交，整理当前功能、失败验收、两类拥塞来源、历史修复、后续任务和运行命令。本文及其他旧文档中的候选状态、IP和历史性能需按日期理解。
+
 独立于原 `15_rkmedia_rockx_face_detection_rtsp` 项目，不覆盖原人脸程序。
 目标芯片是 **RV1126（不是 RV1126B）**，使用第一代 RKNN Toolkit。
 
@@ -14,7 +17,7 @@
 ```bash
 git clone git@github.com:wangwqn/rv1126.git
 cd rv1126
-git checkout v1.14.1
+git checkout v1.15.3
 bash scripts/verify_checkout.sh
 ```
 
