@@ -20,6 +20,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <sys/ioctl.h>
 #include <sys/socket.h>
 #include <thread>
 #include <unistd.h>
@@ -170,6 +171,7 @@ struct RtspServer::Impl {
         bool video_timestamp_valid = false;
         std::uint64_t nonmonotonic_video_drops = 0;
         std::string session;
+        std::string peer;
         std::string input;
         std::deque<OutputPacket> output;
         std::size_t output_offset = 0;
@@ -345,6 +347,7 @@ private:
                     ++it;
                     continue;
                 }
+                log_client_state(client, "close");
                 if (client.playing) --players_;
                 close_fd(client.fd);
                 it = clients_.erase(it);
@@ -397,6 +400,11 @@ private:
                                                sizeof(send_buffer)));
                 auto client = std::unique_ptr<Client>(new Client);
                 client->fd = fd;
+                char peer_address[INET_ADDRSTRLEN]{};
+                if (::inet_ntop(AF_INET, &address.sin_addr, peer_address,
+                                sizeof(peer_address)))
+                    client->peer = std::string(peer_address) + ":" +
+                                   std::to_string(ntohs(address.sin_port));
                 client->video_sequence =
                     static_cast<std::uint16_t>(next_identifier());
                 client->audio_sequence =
@@ -406,6 +414,7 @@ private:
                 std::ostringstream session;
                 session << std::hex << next_identifier();
                 client->session = session.str();
+                log_client_state(*client, "accept");
                 clients_.push_back(std::move(client));
             } catch (const std::exception& error) {
                 std::fprintf(stderr, "rtsp: client setup failed: %s\n", error.what());
@@ -484,7 +493,31 @@ private:
         return -1;
     }
 
+    void log_client_state(const Client& client, const char* event) noexcept {
+        tcp_info info{};
+        socklen_t info_size = sizeof(info);
+        const bool tcp_ok = ::getsockopt(client.fd, IPPROTO_TCP, TCP_INFO,
+                                         &info, &info_size) == 0;
+        int kernel_outq = -1;
+        static_cast<void>(::ioctl(client.fd, TIOCOUTQ, &kernel_outq));
+        const auto epoch_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count();
+        std::fprintf(stderr,
+            "rtsp_diag epoch_ms=%lld event=%s peer=%s session=%s fd=%d "
+            "stream=%d queued=%zu limit=%zu kernel_outq=%d tcp_ok=%d "
+            "unacked=%u lost=%u retrans=%u total_retrans=%u rtt_us=%u "
+            "rto_us=%u cwnd=%u mss=%u probes=%u\n",
+            static_cast<long long>(epoch_ms), event, client.peer.c_str(),
+            client.session.c_str(), client.fd, client.stream,
+            client.output_bytes, max_client_output_, kernel_outq,
+            static_cast<int>(tcp_ok), info.tcpi_unacked, info.tcpi_lost,
+            info.tcpi_retrans, info.tcpi_total_retrans, info.tcpi_rtt,
+            info.tcpi_rto, info.tcpi_snd_cwnd, info.tcpi_snd_mss,
+            static_cast<unsigned>(info.tcpi_probes));
+    }
+
     void recover_backpressure(Client& client) noexcept {
+        log_client_state(client, "backpressure");
         std::size_t retained = 0;
         std::deque<Client::OutputPacket> output;
         for (std::size_t index = 0; index < client.output.size(); ++index) {
@@ -659,6 +692,7 @@ private:
                 client.waiting_for_idr = true;
                 ++players_;
             }
+            log_client_state(client, "play");
             static_cast<void>(RK_MPI_VENC_RequestIDR(client.stream, RK_TRUE));
             respond(client, cseq, 200, "OK",
                     "Session: " + client.session + "\r\nRange: npt=0.000-\r\n");
@@ -709,6 +743,7 @@ private:
             return;
         }
         if (client.backpressured) {
+            log_client_state(client, "writable");
             client.backpressured = false;
             client.waiting_for_idr = true;
             if (client.stream >= 0)
