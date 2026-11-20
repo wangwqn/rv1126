@@ -24,3 +24,5 @@ __pycache__/
 .DS_Store
 .idea/
 .vscode/
+# Private learning/handoff documents stay outside published snapshots.
+handoff/PROJECT_HANDOFF_2026-11-14.md
