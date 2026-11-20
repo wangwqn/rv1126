@@ -15,8 +15,10 @@ required=(
   "scripts/lib/atomic_adb_deploy.sh"
   "scripts/deploy_release.sh"
   "scripts/rollback_device.sh"
-  "15_rkmedia_rockx_face_detection_rtsp/CMakeLists.txt"
   "deploy/pipeline/CMakeLists.txt"
+  "deploy/pipeline/rkmedia_object_detection_rtsp.cpp"
+  "deploy/pipeline/include/vision/tracking.hpp"
+  "deploy/pipeline/tests/tracking_tests.cpp"
   "deploy/pipeline/include/vision/config.hpp"
   "deploy/pipeline/include/vision/audio.hpp"
   "deploy/web/rv1126_web.py"
@@ -51,19 +53,13 @@ required=(
   "handoff/SECURE_OTA.md"
   "handoff/DEVICE_CA.md"
   "deploy/objects.cpp"
-  "config/classes.json"
   "config/classes-v2.json"
   "config/hyp.objects23-finetune.yaml"
   "third_party/yolov5/train.py"
-  "datasets/coco_objects/selection.json"
-  "datasets/coco_objects/manifest.json"
   "datasets/coco_objects_v2/selection.json"
   "datasets/coco_objects_v2/manifest.json"
-  "runs/objects11_refine/weights/best.pt"
   "runs/objects23_finetune/results.csv"
   "runs/objects23_finetune/weights/best.pt"
-  "artifacts/objects.onnx"
-  "artifacts/objects-rv1126.rknn"
   "artifacts/objects23.onnx"
   "artifacts/objects23-rv1126.rknn"
   "artifacts/objects23-rv1126.json"
@@ -80,7 +76,6 @@ required=(
   "artifacts/device-v188-multibox-live.png"
   "artifacts/device-objects23-full-fov-4k-to-1080.jpg"
   "artifacts/device-objects23-full-fov-live-20261024.jpg"
-  "scripts/push_objects23_candidate.sh"
   "release/rv1126/SHA256SUMS"
   "release/rv1126/VERSION"
   "release/rv1126/objects/rv1126-object"
@@ -95,9 +90,6 @@ required=(
   "release/rv1126/web/web-index.html"
   "release/rv1126/web/web-app.js"
   "release/rv1126/web/web-styles.css"
-  "release/rv1126/candidates/objects23/SHA256SUMS"
-  "release/rv1126/candidates/objects23/rv1126-object23"
-  "release/rv1126/candidates/objects23/VERSION"
 )
 
 for relative_path in "${required[@]}"; do
@@ -129,11 +121,6 @@ fi
 
 (
   cd "$project_dir/release/rv1126"
-  sha256sum -c SHA256SUMS
-)
-
-(
-  cd "$project_dir/release/rv1126/candidates/objects23"
   sha256sum -c SHA256SUMS
 )
 

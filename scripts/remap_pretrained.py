@@ -12,9 +12,9 @@ import torch
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--classes", type=Path, default=ROOT / "config/classes.json")
+    parser.add_argument("--classes", type=Path, default=ROOT / "config/classes-v2.json")
     parser.add_argument("--weights", default=str(ROOT / "downloads/yolov5n-v6.0.pt"))
-    parser.add_argument("--output", default=str(ROOT / "artifacts/init11.pt"))
+    parser.add_argument("--output", default=str(ROOT / "artifacts/init23.pt"))
     args = parser.parse_args()
     classes = json.loads(args.classes.read_text())
     checkpoint = torch.load(args.weights, map_location="cpu")  # trusted official checkpoint only

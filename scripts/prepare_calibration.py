@@ -9,10 +9,10 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--images", type=Path, default=ROOT / "datasets/coco_objects/images/train")
+    parser.add_argument("--images", type=Path, default=ROOT / "datasets/coco_objects_v2/images/train")
     parser.add_argument("--size", type=int, default=320)
     parser.add_argument("--count", type=int, default=100)
-    parser.add_argument("--output", type=Path, default=ROOT / "artifacts/calibration")
+    parser.add_argument("--output", type=Path, default=ROOT / "artifacts/calibration23")
     args = parser.parse_args()
     if args.size < 32 or args.size % 32 or args.count < 1:
         parser.error("Invalid calibration size/count")

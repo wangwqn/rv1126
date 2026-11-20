@@ -9,9 +9,9 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--classes", type=Path, default=ROOT / "config/classes.json")
+    parser.add_argument("--classes", type=Path, default=ROOT / "config/classes-v2.json")
     parser.add_argument("--font", default="/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc")
-    parser.add_argument("--output", type=Path, default=ROOT / "artifacts/labels.png")
+    parser.add_argument("--output", type=Path, default=ROOT / "artifacts/labels23.png")
     args = parser.parse_args()
     classes = json.loads(args.classes.read_text())
     font = ImageFont.truetype(args.font, size=22, index=2)  # Noto Sans CJK SC

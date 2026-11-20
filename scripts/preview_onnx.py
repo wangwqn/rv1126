@@ -64,7 +64,7 @@ def predict(session, metadata, bgr, threshold=.35):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("image", type=Path)
-    parser.add_argument("--onnx", type=Path, default=ROOT / "artifacts/objects.onnx")
+    parser.add_argument("--onnx", type=Path, default=ROOT / "artifacts/objects23.onnx")
     parser.add_argument("--output", type=Path, default=ROOT / "artifacts/preview.jpg")
     parser.add_argument("--threshold", type=float, default=.35)
     args = parser.parse_args()

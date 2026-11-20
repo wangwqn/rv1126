@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.10)
 
 project(rk_vision_pipeline LANGUAGES C CXX)
 
-option(RK_VISION_BUILD_DEVICE "Build the RKMedia/RGA/RockX device application" ON)
+option(RK_VISION_BUILD_DEVICE "Build the RKMedia/RGA/RKNN device application" ON)
 option(RK_VISION_ENABLE_ISP "Manage the camera ISP directly through RKAiq" ON)
 
 set(CMAKE_CXX_STANDARD 14)
@@ -18,6 +18,11 @@ endif()
 
 if(BUILD_TESTING)
     enable_testing()
+    add_executable(tracking_tests tests/tracking_tests.cpp)
+    target_include_directories(tracking_tests PRIVATE "${PROJECT_SOURCE_DIR}/include")
+    target_compile_options(tracking_tests PRIVATE -Wall -Wextra -Wpedantic)
+    target_link_libraries(tracking_tests PRIVATE Threads::Threads)
+    add_test(NAME tracking_tests COMMAND tracking_tests)
     add_executable(core_tests tests/core_tests.cpp)
     target_include_directories(core_tests PRIVATE "${PROJECT_SOURCE_DIR}/include")
     target_compile_options(core_tests PRIVATE -Wall -Wextra -Wpedantic)
@@ -60,7 +65,7 @@ endif()
 if(RK_VISION_BUILD_DEVICE)
 
 set(RK_SDK_SYSROOT "${CMAKE_SYSROOT}" CACHE PATH
-    "Sysroot containing the target RKMedia, RGA, RockX and optional RKAiq SDK")
+    "Sysroot containing the target RKMedia, RGA, RKNN and optional RKAiq SDK")
 if(NOT RK_SDK_SYSROOT)
     message(FATAL_ERROR
         "RK_VISION_BUILD_DEVICE=ON requires RK_SDK_SYSROOT or a toolchain file that sets "
@@ -132,7 +137,7 @@ if(RK_VISION_ENABLE_ISP)
 endif()
 
 set(RK_VISION_DEVICE_SOURCES
-    rkmedia_rockx_face_detection_rtsp.cpp
+    rkmedia_object_detection_rtsp.cpp
     src/pipeline.cpp
     src/analytics.cpp
     src/dma_audit.cpp
@@ -144,9 +149,8 @@ foreach(source IN LISTS RK_VISION_DEVICE_SOURCES)
     endif()
 endforeach()
 
-add_executable(rkmedia_rockx_face_detection_rtsp ${RK_VISION_DEVICE_SOURCES})
-set_target_properties(rkmedia_rockx_face_detection_rtsp PROPERTIES OUTPUT_NAME rkmedia_object_detection_rtsp)
-target_compile_options(rkmedia_rockx_face_detection_rtsp PRIVATE -Wall -Wextra -Wpedantic)
+add_executable(rkmedia_object_detection_rtsp ${RK_VISION_DEVICE_SOURCES})
+target_compile_options(rkmedia_object_detection_rtsp PRIVATE -Wall -Wextra -Wpedantic)
 set(RKNN_HEADER_DIR "${RK_SDK_ROOT}/external/rknpu/rknn/rknn_api/librknn_api/include")
 rk_find_required_library(RKNN_LIBRARY rknn_api "first-generation RKNN")
 rk_find_required_library(OPENCV_CORE opencv_core "OpenCV core")
@@ -157,18 +161,18 @@ target_include_directories(object_detector PUBLIC .. "${PROJECT_SOURCE_DIR}/incl
 target_link_libraries(object_detector PUBLIC "${RKNN_LIBRARY}" "${OPENCV_CORE}" "${OPENCV_IMGPROC}" "${OPENCV_IMGCODECS}")
 add_executable(object_image ../image_main.cpp)
 target_link_libraries(object_image PRIVATE object_detector)
-target_include_directories(rkmedia_rockx_face_detection_rtsp PRIVATE
+target_include_directories(rkmedia_object_detection_rtsp PRIVATE
     "${PROJECT_SOURCE_DIR}/include"
     "${PROJECT_SOURCE_DIR}")
-target_include_directories(rkmedia_rockx_face_detection_rtsp SYSTEM PRIVATE
+target_include_directories(rkmedia_object_detection_rtsp SYSTEM PRIVATE
     "${RK_SDK_SYSROOT}/usr/include"
     "${RKMEDIA_INCLUDE_DIR}"
     "${RGA_INCLUDE_DIR}"
     ${RK_ISP_INCLUDE_DIRS})
 if(RK_VISION_ENABLE_ISP)
-    target_compile_definitions(rkmedia_rockx_face_detection_rtsp PRIVATE RKAIQ=1)
+    target_compile_definitions(rkmedia_object_detection_rtsp PRIVATE RKAIQ=1)
 endif()
-target_link_libraries(rkmedia_rockx_face_detection_rtsp PRIVATE
+target_link_libraries(rkmedia_object_detection_rtsp PRIVATE
     object_detector
     "${EASYMEDIA_LIBRARY}"
     "${RGA_LIBRARY}"

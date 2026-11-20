@@ -20,9 +20,9 @@ def checked(result, operation):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--onnx", type=Path, default=ROOT / "artifacts/objects.onnx")
-    parser.add_argument("--dataset", type=Path, default=ROOT / "artifacts/calibration/dataset.txt")
-    parser.add_argument("--output", type=Path, default=ROOT / "artifacts/objects-rv1126.rknn")
+    parser.add_argument("--onnx", type=Path, default=ROOT / "artifacts/objects23.onnx")
+    parser.add_argument("--dataset", type=Path, default=ROOT / "artifacts/calibration23/dataset.txt")
+    parser.add_argument("--output", type=Path, default=ROOT / "artifacts/objects23-rv1126.rknn")
     parser.add_argument("--no-quantize", action="store_true")
     args = parser.parse_args()
     version = importlib.metadata.version("rknn-toolkit")

@@ -128,6 +128,7 @@ private:
     bool enabled_;
     std::unique_ptr<object_detection::LabelPainter> painter_;
     std::array<std::shared_ptr<cv::Mat>, region_count_> current_overlays_;
+    std::array<Box, region_count_> current_boxes_{};
     // Keep four complete generations alive while queued RGA frames drain.
     std::array<std::shared_ptr<cv::Mat>, region_count_ * 4> retired_overlays_;
     std::size_t retired_index_ = 0;

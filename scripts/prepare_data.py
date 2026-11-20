@@ -48,12 +48,12 @@ def remap(text, mapping):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--classes", type=Path, default=ROOT / "config/classes.json")
+    parser.add_argument("--classes", type=Path, default=ROOT / "config/classes-v2.json")
     parser.add_argument("--train-per-class", type=int, default=60)
     parser.add_argument("--val-per-class", type=int, default=15)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--resume", action="store_true", help="Retry the same deterministic subset after a download failure")
-    parser.add_argument("--output", type=Path, default=ROOT / "datasets/coco_objects")
+    parser.add_argument("--output", type=Path, default=ROOT / "datasets/coco_objects_v2")
     args = parser.parse_args()
     if min(args.train_per_class, args.val_per_class) <= 0:
         parser.error("Sample counts must be positive")

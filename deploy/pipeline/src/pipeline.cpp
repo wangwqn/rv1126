@@ -5,6 +5,7 @@
 #include "vision/core.hpp"
 #include "vision/latency_trace.hpp"
 #include "vision/rk_backend.hpp"
+#include "vision/tracking.hpp"
 #include <algorithm>
 #include <atomic>
 #include <chrono>
@@ -142,7 +143,7 @@ public:
             main_rga_.reset(new RgaChannel(0, config_.width, config_.height,
                                            IMAGE_TYPE_NV12, config_.rotation,
                                            config_.pool_buffers));
-            // Sub video has its own NV12 hardware path. RockX gets a separate
+            // Sub video has its own NV12 hardware path. RKNN gets a separate
             // low-resolution BGR RGA branch, so AI never owns a sub-video frame.
             sub_rga_.reset(new RgaChannel(1, config_.sub_width, config_.sub_height,
                                           IMAGE_TYPE_NV12, config_.rotation,
@@ -253,6 +254,12 @@ public:
             << ", stale_drop=" << ai_frames_.dropped()
             << ") osd(boxes=" << overlay_boxes_.load()
             << ", truncated=" << overlay_truncated_.load()
+            << ", pts=" << overlay_main_pts_.load()
+            << ", age_us=" << overlay_age_us_.load()
+            << ", updates=" << overlay_updates_.load()
+            << ", predicted=" << overlay_predictions_.load()
+            << ", expired=" << overlay_expired_.load()
+            << ", pts_drop=" << overlay_pts_.dropped()
             << ") rtsp(sent=" << packets_sent_.load()
             << ", queue_high_water=" << encoded_packets_.high_water()
             << '/' << config_.packet_queue
@@ -393,6 +400,7 @@ private:
         ai_frames_.close();
         encoded_packets_.close();
         audio_packets_.close();
+        overlay_pts_.close();
         detections_.close();
     }
 
@@ -491,7 +499,7 @@ private:
             if (!interruptible_delay(config_.ai_delay_ms)) return;
             const auto infer_start = Clock::now();
             auto detection = detector_->infer(source.frame);
-            // RockX/RKNN has finished consuming the BGR view. Return its
+            // RKNN has finished consuming the BGR view. Return its
             // DMA-BUF lease immediately instead of retaining it until the
             // next low-rate AI sample overwrites this local variable.
             source.frame.reset();
@@ -508,59 +516,52 @@ private:
     }
 
     void overlay_loop() {
-        uint64_t applied_pts = 0;
-        uint64_t detection_generation = 0;
-        bool applied = false;
-        bool visible = false;
+        DetectionTracker tracker;
+        std::vector<Box> applied_boxes;
+        std::shared_ptr<const Detection> applied_result;
+        uint64_t main_pts = 0;
+        auto main_seen_at = Clock::now();
         const auto result_ttl = std::chrono::milliseconds(config_.result_ttl_ms);
+        const uint64_t max_pts_age = uint64_t(config_.result_max_pts_ms) * 1000;
+        const auto wake = std::chrono::milliseconds(std::min(50, config_.result_ttl_ms));
         while (running_.load()) {
-            const auto result = detections_.latest(result_ttl);
-            if (result && (!applied || result->pts_us != applied_pts)) {
-                auto boxes = scale_boxes(*result, config_.output_width(),
-                                         config_.output_height());
+            uint64_t next_pts = 0;
+            if (overlay_pts_.pop(next_pts, wake)) {
+                main_pts = next_pts;
+                main_seen_at = Clock::now();
+            }
+            if (!running_.load()) return;
+            // Observe VENC0 before the RTSP queue can block. This is a
+            // conservative main-stream clock, not an exact per-RGA-frame
+            // region binding; the existing hardware graph stays asynchronous.
+            const auto result = main_pts && Clock::now() - main_seen_at <= result_ttl
+                ? detections_.select(main_pts, max_pts_age, result_ttl) : nullptr;
+            auto projected = tracker.project(result, main_pts, max_pts_age, result_ttl,
+                                             config_.tracking);
+            auto boxes = scale_boxes(projected, config_.output_width(), config_.output_height());
+            overlay_main_pts_.store(main_pts);
+            overlay_age_us_.store(result ? main_pts - result->pts_us : 0);
+            if (tracker.predicted()) ++overlay_predictions_;
+            if (!same_overlay_boxes(boxes, applied_boxes)) {
                 const auto update_start = Clock::now();
-                if (latency_active(update_start) && update_start >= result->completed_at)
+                if (result && result != applied_result && latency_active(update_start) &&
+                    update_start >= result->completed_at)
                     observe_latency(LatencyMetric::osd_wait, osd_wait_, result->pts_us,
                                     update_start,
                                     duration_us(update_start - result->completed_at));
                 const std::size_t displayed = compositor_->update(boxes);
                 const auto update_end = Clock::now();
-                if (latency_active(update_end))
+                if (result && latency_active(update_end))
                     observe_latency(LatencyMetric::osd_update, osd_update_, result->pts_us,
                                     update_end, duration_us(update_end - update_start));
                 overlay_boxes_.store(displayed);
                 if (boxes.size() > displayed)
                     overlay_truncated_.fetch_add(boxes.size() - displayed);
-                applied_pts = result->pts_us;
-                applied = true;
-                visible = displayed != 0;
-            } else if (!result && visible) {
-                compositor_->update({});
-                overlay_boxes_.store(0);
-                applied = false;
-                visible = false;
-            } else if (!result) {
-                applied = false;
+                if (!result && !applied_boxes.empty()) ++overlay_expired_;
+                applied_boxes = std::move(boxes);
+                ++overlay_updates_;
             }
-
-            // AI publishes at only a few FPS. Sleep until the next result
-            // instead of polling 50 times/s, but still wake exactly when the
-            // current result reaches its TTL so stale boxes are cleared.
-            auto wait = std::chrono::milliseconds(1000);
-            if (result) {
-                const auto expires = result->completed_at + result_ttl;
-                const auto now = Clock::now();
-                if (expires <= now) {
-                    wait = std::chrono::milliseconds(0);
-                } else {
-                    const auto remaining_us = duration_us(expires - now);
-                    wait = std::chrono::milliseconds((remaining_us + 999) / 1000);
-                }
-            }
-            if (!detections_.wait_for_change(detection_generation, wait) &&
-                !running_.load()) {
-                return;
-            }
+            applied_result = result;
         }
     }
 
@@ -599,7 +600,11 @@ private:
             observe_pts_age(stream ? LatencyMetric::sub_venc_age
                                    : LatencyMetric::main_venc_age,
                             venc_age_[stream], packet->pts(), ready_at);
-            if (account_pts(stream, packet->pts())) ++venc_frames_[stream];
+            if (account_pts(stream, packet->pts())) {
+                ++venc_frames_[stream];
+                if (stream == 0 && config_.ai && config_.osd)
+                    overlay_pts_.push(packet->pts());
+            }
             EncodedPacket encoded;
             encoded.stream = stream;
             encoded.frame = std::move(packet);
@@ -701,6 +706,7 @@ private:
     BlockingQueue<EncodedPacket> encoded_packets_;
     LatestQueue<AudioPacket> audio_packets_;
     DetectionCache detections_{8};
+    LatestQueue<uint64_t> overlay_pts_{1};  // PTS metadata only, never a DMA lease
     std::vector<std::thread> threads_;
 
     std::unique_ptr<MediaSystem> media_;
@@ -728,6 +734,8 @@ private:
     std::atomic<uint64_t> pts_gaps_[2]{{0}, {0}};
     std::atomic<uint64_t> pts_resets_[2]{{0}, {0}};
     std::atomic<uint64_t> overlay_boxes_{0}, overlay_truncated_{0};
+    std::atomic<uint64_t> overlay_main_pts_{0}, overlay_age_us_{0}, overlay_updates_{0};
+    std::atomic<uint64_t> overlay_predictions_{0}, overlay_expired_{0};
     Clock::time_point latency_start_{};
     LatencyWindow ai_rga_age_, ai_queue_, ai_infer_, ai_total_;
     LatencyWindow osd_wait_, osd_update_;

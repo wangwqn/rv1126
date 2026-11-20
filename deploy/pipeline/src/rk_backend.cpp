@@ -764,15 +764,22 @@ std::size_t HardwareCompositor::update(const std::vector<Box>& boxes) {
             continue;
         }
         const bool above = b.top >= 32;
-        auto overlay = std::make_shared<cv::Mat>(
+        const auto& old = current_boxes_[slot];
+        // Motion-only updates move an existing bitmap. Do not rasterize a
+        // potentially large BGRA rectangle at video FPS between NPU results.
+        const bool reusable = current_overlays_[slot] &&
+            old.right - old.left == box_width && old.bottom - old.top == box_height &&
+            old.class_id == b.class_id && old.score == b.score && (old.top >= 32) == above;
+        auto overlay = reusable ? current_overlays_[slot] : std::make_shared<cv::Mat>(
             painter_->render_box_overlay(box_width, box_height, b, above));
         if (!overlay->isContinuous() || overlay->type() != CV_8UC4 ||
             overlay->rows > height_)
             throw std::runtime_error("Box overlay is not a valid packed BGRA bitmap");
-        if (current_overlays_[slot])
+        if (!reusable && current_overlays_[slot])
             retired_overlays_[retired_index_++ % retired_overlays_.size()] =
                 current_overlays_[slot];
         current_overlays_[slot] = overlay;
+        current_boxes_[slot] = b;
 
         OSD_REGION_INFO_S region{};
         region.enRegionId = static_cast<OSD_REGION_ID_E>(slot);

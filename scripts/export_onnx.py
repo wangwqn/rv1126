@@ -20,10 +20,10 @@ def raw_heads(self, features):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--classes", type=Path, default=ROOT / "config/classes.json")
+    parser.add_argument("--classes", type=Path, default=ROOT / "config/classes-v2.json")
     parser.add_argument("--weights", type=Path, required=True)
     parser.add_argument("--size", type=int, default=320)
-    parser.add_argument("--output", type=Path, default=ROOT / "artifacts/objects.onnx")
+    parser.add_argument("--output", type=Path, default=ROOT / "artifacts/objects23.onnx")
     args = parser.parse_args()
     if args.size < 32 or args.size % 32:
         parser.error("Size must be a positive multiple of 32")

@@ -3,21 +3,26 @@
 **新接手或交给其他AI时，先读 [完整项目交接档案（2026-11-14）](handoff/PROJECT_HANDOFF_2026-11-14.md)。**
 其中区分了正式板端v1.15.3与未发布诊断提交，整理当前功能、失败验收、两类拥塞来源、历史修复、后续任务和运行命令。本文及其他旧文档中的候选状态、IP和历史性能需按日期理解。
 
-独立于原 `15_rkmedia_rockx_face_detection_rtsp` 项目，不覆盖原人脸程序。
+当前工作区仅保留23类物体检测工程，已移除旧人脸工程和旧模型候选副本。
 目标芯片是 **RV1126（不是 RV1126B）**，使用第一代 RKNN Toolkit。
+
+**2026-11-20本地升级至v1.16.0，尚未部署验收。** 新增主流PTS匹配与检测间隔目标
+位置预测；参数、测量边界和验收步骤见`deploy/pipeline/docs/pts-tracking.md`。
+此前交接文档是带日期的历史快照，不能当成当前目录清单。
 
 ## 克隆后快速使用
 
-仓库包含原始人脸工程、物体检测工程、固定版本 YOLOv5 源码、COCO 数据选择清单、
+仓库包含物体检测工程、固定版本 YOLOv5 源码、COCO 数据选择清单、
 训练结果、ONNX/RKNN 产物，以及针对当前 ALIENTEK RV1126 BSP 编译的发布包。
 不包含不可移植的 Python 虚拟环境、下载缓存、完整 Rockchip SDK 和 CMake 中间文件。
-默认 11 类数据集包含 437 张训练图和 105 张验证图；新增 23 类候选数据集包含
-1362 张训练图和 315 张验证图。图片与标注不上传，可用已记录的选择参数重新生成。
+当前23类数据集包含1362张训练图和315张验证图。图片与标注不上传，
+可用已记录的选择参数重新生成。
 
 ```bash
 git clone git@github.com:wangwqn/rv1126.git
 cd rv1126
-git checkout v1.15.3
+# 如需此前板载验证版本，可检出v1.15.3；该标签保留历史完整快照。
+# 当前v1.16.0是本地开发分支，未推送或创建正式发布标签。
 bash scripts/verify_checkout.sh
 ```
 
@@ -67,15 +72,14 @@ OTA schema 2支持stable/beta/development通道、依赖版本门禁、公钥轮
 
 ## 检测类别与名称显示
 
-当前正式发布为23类。原11类：手机、杯子、瓶子、书籍、鼠标、键盘、笔记本电脑、
-显示器/电视、香蕉、苹果、橙子，类别顺序由 `config/classes.json` 固定；它仍可从
-`v1.8.5`及更早标签恢复，但不再作为板端当前模型。
+当前模型为23类。前11类：手机、杯子、瓶子、书籍、鼠标、键盘、笔记本电脑、
+显示器/电视、香蕉、苹果、橙子。
 
 23 类模型保持以上 ID 0–10 不变，并追加：人、背包、手提包、碗、三明治、
 椅子、沙发、盆栽、餐桌、遥控器、时钟、剪刀。它由 `config/classes-v2.json`
 定义，已经完成主机训练、ONNX 检查、RKNN 转换、板端单图和短时实时流验证。
-模型已提升到 `release/rv1126/objects/` 作为当前发布；原候选目录保留相同模型与
-验证资料，方便审计。精度和长稳测试仍需补充。
+模型位于`release/rv1126/objects/`；重复候选目录已清除。
+逐类现场精度和长稳测试仍需补充。
 “电脑”目前仍指 COCO 的笔记本电脑，不包含台式机机箱。改变类别后必须重新准备
 标注、训练、导出、量化并生成标签，不能只改 JSON 或标签图片。
 
@@ -107,30 +111,27 @@ VI 使用 V4L2 DMABUF，主、子视频
 ## 当前数据与模型定位
 
 数据来自公开 COCO 2017 的真实图片及官方类别对应标注，并非生成图。
-默认 11 类数据初始选取每类最多 40 张训练图、10 张验证图，合并去重后是
-437 / 105 张。23 类候选选取每类最多 60 / 15 张，合并去重后是 1362 / 315 张。
+23类选取每类最多60 / 15张，合并去重后是1362 / 315张。
 一张图里的所选类别都保留标注。训练与验证来自不同 COCO 分区，没有图片 ID 交集。
-具体文件和各类实例数量见 `datasets/coco_objects/manifest.json`。
+具体文件和各类实例数量见`datasets/coco_objects_v2/manifest.json`。
 
 这是小数据量的迁移学习/部署基线，不是已经达到生产准确率的成品。
-首轮 12 epoch 的验证 mAP@0.5 为约 0.303，书籍和部分水果较弱。
-后续微调与实机结果请看 `STATUS.md`；不能将验证指标当成摄像头现场准确率。
+最新训练结果位于`runs/objects23_finetune/`；历史实验与实机结果请看`STATUS.md`。
+不能将验证指标当成摄像头现场准确率。
 需要补充实际摄像头角度、光照和背景的图片及完整标注，并保留独立测试集。
 
 ## 目录
 
 ```text
-config/classes.json        稳定 11 类的顺序、中文名、原 COCO 类别索引
-config/classes-v2.json     候选 23 类配置；保持原 11 类 ID 不变
+config/classes-v2.json     当前23类配置；保持原11类ID不变
 scripts/                   下载标注、训练、导出、量化、推送与预览
 third_party/yolov5/         官方 YOLOv5 v6.0，固定 commit
-datasets/coco_objects/     本机数据集；仓库只保存选择清单，图片和标签需重新生成
-datasets/coco_objects_v2/  23 类候选数据集；同样只跟踪选择清单与统计
-runs/                      训练权重、损失和验证指标
+datasets/coco_objects_v2/  当前23类数据集；只跟踪选择清单与统计
+runs/objects23_finetune/   当前训练权重、损失和验证指标
 artifacts/                 ONNX、RKNN、模型元数据、中文标签、测试输出
 deploy/objects.cpp         RKNN RAII、预处理、后处理、中文绘制
 deploy/decode.hpp          三路 raw head 解码和按类别 NMS
-deploy/pipeline/           从原工程复制的独立双流视频管线
+deploy/pipeline/           当前独立双流视频管线、PTS匹配与跟踪
 deploy/pipeline/build-rv1126-sdk/  ARM 交叉编译产物
 .venv-train/               PyTorch 训练/ONNX 环境
 .venv-rknn/                RKNN Toolkit 1.7.5 / TensorFlow 2.2 转换环境
@@ -143,45 +144,19 @@ deploy/pipeline/build-rv1126-sdk/  ARM 交叉编译产物
 ```bash
 cd /home/alientek/桌面/rv1126_object_training
 
-# 已有数据时，参数需与 selection.json 一致。更换采样规模请指定新的 --output。
-.venv-train/bin/python scripts/prepare_data.py --train-per-class 40 --val-per-class 10 --resume
-
-# 仅从可信的官方 COCO 权重初始化 11 类输出通道，不是训练完成的权重。
-.venv-train/bin/python scripts/remap_pretrained.py
-
-# 此包装器在训练前将 SiLU 改成 ReLU，不会在导出时偷换激活函数。
-# --workers 0 避免受限环境中的多进程 socket 问题；普通机器可自行增加。
-.venv-train/bin/python scripts/train.py \
-  --data datasets/coco_objects/data.yaml --weights artifacts/init11.pt \
-  --img 320 --batch-size 8 --epochs 100 --device cpu --workers 0 \
-  --project runs --name objects11 --cache ram
-
-# 把下面的权重路径替换为你刚训练出的实际 best.pt 路径。
-.venv-train/bin/python scripts/export_onnx.py --weights runs/objects11/weights/best.pt
-.venv-train/bin/python scripts/prepare_calibration.py
-.venv-rknn/bin/python scripts/convert_rknn.py
-.venv-train/bin/python scripts/generate_labels.py
-```
-
-重新生成并训练 23 类候选模型时使用独立目录，避免覆盖稳定 11 类产物：
-
-```bash
+# 下面全部使用当前23类配置，已有数据时参数须与selection.json一致。
 .venv-train/bin/python scripts/prepare_data.py \
   --classes config/classes-v2.json --train-per-class 60 --val-per-class 15 \
   --output datasets/coco_objects_v2 --resume
-.venv-train/bin/python scripts/remap_pretrained.py \
-  --classes config/classes-v2.json --output artifacts/init23.pt
+# 从已保存的最新ReLU权重继续训练，避免依赖已清理的旧训练目录。
 .venv-train/bin/python scripts/train.py \
-  --data datasets/coco_objects_v2/data.yaml --weights artifacts/init23.pt \
-  --img 320 --batch-size 16 --epochs 30 --device cpu --workers 0 \
-  --project runs --name objects23 --cache ram
-.venv-train/bin/python scripts/train.py \
-  --data datasets/coco_objects_v2/data.yaml --weights runs/objects23/weights/best.pt \
+  --data datasets/coco_objects_v2/data.yaml --weights runs/objects23_finetune/weights/best.pt \
   --hyp config/hyp.objects23-finetune.yaml --image-weights \
   --img 320 --batch-size 16 --epochs 30 --device cpu --workers 0 \
-  --project runs --name objects23_finetune --cache ram
+  --project runs --name objects23_next --cache ram
+# 使用新训练得到的权重，当前已保存模型的重导出则用objects23_finetune/weights/best.pt。
 .venv-train/bin/python scripts/export_onnx.py \
-  --classes config/classes-v2.json --weights runs/objects23_finetune/weights/best.pt \
+  --classes config/classes-v2.json --weights runs/objects23_next/weights/best.pt \
   --output artifacts/objects23.onnx
 .venv-train/bin/python scripts/prepare_calibration.py \
   --images datasets/coco_objects_v2/images/train --output artifacts/calibration23
@@ -192,8 +167,7 @@ cd /home/alientek/桌面/rv1126_object_training
   --classes config/classes-v2.json --output artifacts/labels23.png
 ```
 
-开发板在线后可运行 `bash scripts/push_objects23_candidate.sh`，它会上传到
-`/root/rv1126_objects23_candidate/`，不会替换 `/root/rv1126_objects/`。
+旧模型候选推送脚本已移除。生产A/B设备使用签名OTA；本地构建通过不等于板载验收通过。
 正式目录中的 `rv1126-object start` 默认采用 IMX415 2×2 binning，以
 1944×1097 RAW12 输出并对齐到1920×1080有效记录区域；主、子流为
 1920×1080/640×360、30 FPS，AI、OSD、音频、TNR 2to1、NR和SHARP全部开启。
@@ -275,9 +249,10 @@ RV1126_WATCHDOG_BACKOFF_MAX=60
 bash scripts/rollback_device.sh
 ```
 
-OSD 检测结果默认保留500 ms，大于3 FPS AI的约333 ms采样周期，
-用于吸收推理和线程调度抖动。AI发布空检测结果时仍会立即清框；
-可用 `--result-ttl-ms` 显式调整。
+OSD按主流输出PTS选择不晚于视频的检测结果，默认PTS差和完成时间TTL均不超过500 ms。
+两次NPU结果间使用同类别关联与速度预测移动框，匹配到空结果或超时就清框。
+`--result-max-pts-ms`、`--result-ttl-ms`分别调整两种门禁，`--no-tracking`用于对照。
+预测不刷新结果有效期，且持久硬件OSD仍异步生效；详见`deploy/pipeline/docs/pts-tracking.md`。
 
 回滚脚本会先校验所有 `.previous` 文件，再停止服务、交换当前/上一版文件、
 重新校验、启动并等待健康检查通过。连续执行两次可切回刚才的版本。

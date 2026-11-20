@@ -44,6 +44,9 @@ struct Config {
     // latest result through normal inference/scheduling jitter; an explicit
     // empty AI result still clears the overlay immediately.
     int result_ttl_ms = 500;
+    // Independent source-PTS age gate. Tracking cannot extend either limit.
+    int result_max_pts_ms = 500;
+    bool tracking = true;
     int stall_timeout_ms = 5000;
     int ai_delay_ms = 0;
     // RKMedia exposes eight RGA OSD regions. Each detection uses one
@@ -98,7 +101,8 @@ struct Config {
             throw std::invalid_argument("invalid ALSA device, source, channels or packet duration");
         if (bitrate < 10000 || sub_bitrate < 10000 || rtsp_port < 1 || rtsp_port > 65535 ||
             rtsp_client_buffer_kb < 128 || rtsp_client_buffer_kb > 4096 ||
-            result_ttl_ms < 1 || result_ttl_ms > 10000 || stall_timeout_ms < 1000 ||
+            result_ttl_ms < 1 || result_ttl_ms > 10000 ||
+            result_max_pts_ms < 1 || result_max_pts_ms > 10000 || stall_timeout_ms < 1000 ||
             stall_timeout_ms > 60000 || ai_delay_ms < 0 || ai_delay_ms > 5000 ||
             max_osd_boxes < 1 || max_osd_boxes > 8 ||
             event_cooldown_ms < 0 || event_cooldown_ms > 600000 ||
@@ -136,6 +140,7 @@ inline Config parse_config(int argc, char** argv) {
         const std::string key = argv[i];
         if (key == "--no-ai") { c.ai = false; continue; }
         if (key == "--no-osd") { c.osd = false; continue; }
+        if (key == "--no-tracking") { c.tracking = false; continue; }
         if (key == "--no-audio") { c.audio = false; continue; }
         if (key == "--no-isp") { c.iq_dir.clear(); continue; }
         if (key == "--latency-stats") { c.latency_stats = true; continue; }
@@ -186,6 +191,7 @@ inline Config parse_config(int argc, char** argv) {
         else if (key == "--rtsp-port") c.rtsp_port = parse_integer(value);
         else if (key == "--rtsp-client-buffer-kb") c.rtsp_client_buffer_kb = parse_integer(value);
         else if (key == "--result-ttl-ms") c.result_ttl_ms = parse_integer(value);
+        else if (key == "--result-max-pts-ms") c.result_max_pts_ms = parse_integer(value);
         else if (key == "--stall-timeout-ms") c.stall_timeout_ms = parse_integer(value);
         else if (key == "--ai-delay-ms") c.ai_delay_ms = parse_integer(value);
         else if (key == "--max-osd-boxes") c.max_osd_boxes = parse_integer(value);
@@ -211,7 +217,8 @@ inline void print_usage(std::ostream& out) {
            "  --audio-source main|hands-free|current --audio-input-channels 2\n"
            "  --audio-period-ms 20 (8 kHz mono G.711A/PCMA output)\n"
            "  --rtsp-port 8554 --rtsp-client-buffer-kb 512\n"
-           "  --result-ttl-ms 500 --stall-timeout-ms 5000\n"
+           "  --result-ttl-ms 500 --result-max-pts-ms 500 --no-tracking\n"
+           "  --stall-timeout-ms 5000\n"
            "  --iq-dir /etc/iqfiles\n"
            "  --latency-stats (rolling P50/P95/P99/max stage latency)\n"
            "  --dma-audit (DMA-BUF leases/FDs, CPU mappings and wait percentiles)\n"
